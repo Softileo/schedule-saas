@@ -1,0 +1,9 @@
+# *
+User-agent: *
+Allow: /
+
+# Host
+Host: https://calenda.pl
+
+# Sitemaps
+Sitemap: https://calenda.pl/sitemap.xml

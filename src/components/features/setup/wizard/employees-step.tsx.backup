@@ -1,0 +1,337 @@
+"use client";
+
+import { memo, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Plus, X, Users } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { Employee, EmploymentType } from "./types";
+import { EMPLOYMENT_TYPES } from "@/lib/constants/employment";
+
+interface EmployeesStepProps {
+    employees: Employee[];
+    onAddEmployee: () => void;
+    onRemoveEmployee: (id: string) => void;
+    onUpdateEmployee: (
+        id: string,
+        field: keyof Employee,
+        value: string | number
+    ) => void;
+}
+
+const EMPLOYMENT_OPTIONS_SHORT = EMPLOYMENT_TYPES.slice(0, -1); // Bez custom dla szybkiego wyboru
+
+const EmployeeCard = memo(function EmployeeCard({
+    employee,
+    index,
+    canDelete,
+    onRemove,
+    onUpdate,
+    viewMode,
+}: {
+    employee: Employee;
+    index: number;
+    canDelete: boolean;
+    onRemove: () => void;
+    onUpdate: (field: keyof Employee, value: string | number) => void;
+    viewMode: ViewMode;
+}) {
+    if (viewMode === "compact") {
+        return (
+            <div className="group flex items-center gap-3 p-3 rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition-colors">
+                {/* Avatar */}
+                <div
+                    className="w-9 h-9 rounded-lg shrink-0 flex items-center justify-center text-white font-semibold text-sm"
+                    style={{ backgroundColor: employee.color }}
+                >
+                    {employee.firstName && employee.lastName
+                        ? `${employee.firstName[0]}${employee.lastName[0]}`.toUpperCase()
+                        : index + 1}
+                </div>
+
+                {/* Names */}
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <Input
+                        placeholder="Imię"
+                        value={employee.firstName}
+                        onChange={(e) => onUpdate("firstName", e.target.value)}
+                        className="h-9 text-sm border-slate-200"
+                    />
+                    <Input
+                        placeholder="Nazwisko"
+                        value={employee.lastName}
+                        onChange={(e) => onUpdate("lastName", e.target.value)}
+                        className="h-9 text-sm border-slate-200"
+                    />
+                </div>
+
+                {/* Employment - compact buttons */}
+                <div className="hidden sm:flex items-center gap-1">
+                    {EMPLOYMENT_OPTIONS_SHORT.map((opt) => (
+                        <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() =>
+                                onUpdate("employmentType", opt.value)
+                            }
+                            className={cn(
+                                "w-10 h-9 rounded-md text-xs font-semibold transition-colors",
+                                employee.employmentType === opt.value
+                                    ? "bg-slate-900 text-white"
+                                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            )}
+                            title={opt.label}
+                        >
+                            {opt.fraction}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Delete */}
+                {canDelete && (
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={onRemove}
+                        className="h-9 w-9 text-slate-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                        <X className="w-4 h-4" />
+                    </Button>
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <div className="relative p-4 rounded-xl border border-slate-200 bg-white">
+            {canDelete && (
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={onRemove}
+                    className="absolute top-2 right-2 h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                >
+                    <X className="w-4 h-4" />
+                </Button>
+            )}
+
+            <div className="space-y-4">
+                {/* Avatar and Name */}
+                <div className="flex items-start gap-3">
+                    <div
+                        className="w-11 h-11 rounded-lg shrink-0 flex items-center justify-center text-white font-semibold text-sm"
+                        style={{ backgroundColor: employee.color }}
+                    >
+                        {employee.firstName && employee.lastName
+                            ? `${employee.firstName[0]}${employee.lastName[0]}`.toUpperCase()
+                            : index + 1}
+                    </div>
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-600">
+                                Imię
+                            </label>
+                            <Input
+                                placeholder="np. Jan"
+                                value={employee.firstName}
+                                onChange={(e) =>
+                                    onUpdate("firstName", e.target.value)
+                                }
+                                className="h-9 text-sm"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-600">
+                                Nazwisko
+                            </label>
+                            <Input
+                                placeholder="np. Kowalski"
+                                value={employee.lastName}
+                                onChange={(e) =>
+                                    onUpdate("lastName", e.target.value)
+                                }
+                                className="h-9 text-sm"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Employment */}
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <label className="text-xs font-medium text-slate-600">
+                        Wymiar etatu
+                    </label>
+                    <div className="grid grid-cols-5 gap-2">
+                        {EMPLOYMENT_TYPES.map((opt) => {
+                            const isSelected =
+                                employee.employmentType === opt.value;
+                            return (
+                                <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() =>
+                                        onUpdate("employmentType", opt.value)
+                                    }
+                                    className={cn(
+                                        "relative px-2 py-2.5 rounded-lg transition-all",
+                                        "flex flex-col items-center justify-center",
+                                        isSelected
+                                            ? "bg-slate-900 text-white shadow-sm"
+                                            : "bg-slate-50 text-slate-700 hover:bg-slate-100"
+                                    )}
+                                >
+                                    <div className="text-lg font-semibold">
+                                        {opt.fraction || "···"}
+                                    </div>
+                                    <div className="text-[9px] font-medium mt-0.5 opacity-70">
+                                        {opt.value !== "custom" &&
+                                            `${opt.hoursPerDay}h`}
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {employee.employmentType === "custom" && (
+                        <div className="flex items-center gap-2 pt-1">
+                            <Input
+                                type="number"
+                                min={1}
+                                max={12}
+                                step={0.5}
+                                value={employee.customHours || ""}
+                                onChange={(e) =>
+                                    onUpdate(
+                                        "customHours",
+                                        parseFloat(e.target.value) || 0
+                                    )
+                                }
+                                placeholder="Godziny"
+                                className="w-24 h-8 text-sm"
+                            />
+                            <span className="text-xs text-slate-500">
+                                h/dzień
+                            </span>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+});
+
+export const EmployeesStep = memo(function EmployeesStep({
+    employees,
+    onAddEmployee,
+    onRemoveEmployee,
+    onUpdateEmployee,
+}: EmployeesStepProps) {
+    const [viewMode, setViewMode] = useState<ViewMode>(
+        employees.length > 5 ? "compact" : "detailed"
+    );
+
+    const handleUpdate = useCallback(
+        (id: string) => (field: keyof Employee, value: string | number) => {
+            onUpdateEmployee(id, field, value);
+        },
+        [onUpdateEmployee]
+    );
+
+    const handleAddMultiple = () => {
+        for (let i = 0; i < 5; i++) {
+            onAddEmployee();
+        }
+    };
+
+    return (
+        <div className="space-y-5 animate-in fade-in duration-300">
+            {/* Header */}
+            <div className="text-center">
+                <h2 className="text-xl font-semibold text-slate-900">
+                    Dodaj pracowników
+                </h2>
+                <p className="text-slate-500 mt-1 text-sm">
+                    Wpisz dane osób, dla których będziesz tworzyć grafik
+                </p>
+            </div>
+
+            {/* Stats & View Toggle */}
+            <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-slate-50 border border-slate-200 max-w-2xl mx-auto">
+                <div className="flex items-center gap-2 text-sm">
+                    <Users className="w-4 h-4 text-slate-400" />
+                    <span className="text-slate-600">
+                        {employees.length}{" "}
+                        {employees.length === 1 ? "pracownik" : "pracowników"}
+                    </span>
+                </div>
+                <div className="flex items-center gap-1">
+                    <button
+                        onClick={() => setViewMode("compact")}
+                        className={cn(
+                            "px-3 py-1 text-xs font-medium rounded transition-colors",
+                            viewMode === "compact"
+                                ? "bg-white text-slate-900 shadow-sm"
+                                : "text-slate-500 hover:text-slate-700"
+                        )}
+                    >
+                        Kompaktowy
+                    </button>
+                    <button
+                        onClick={() => setViewMode("detailed")}
+                        className={cn(
+                            "px-3 py-1 text-xs font-medium rounded transition-colors",
+                            viewMode === "detailed"
+                                ? "bg-white text-slate-900 shadow-sm"
+                                : "text-slate-500 hover:text-slate-700"
+                        )}
+                    >
+                        Szczegółowy
+                    </button>
+                </div>
+            </div>
+
+            {/* Employee List */}
+            <div className="space-y-2 max-w-2xl mx-auto px-4 sm:px-0">
+                {employees.map((emp, index) => (
+                    <EmployeeCard
+                        key={emp.id}
+                        employee={emp}
+                        index={index}
+                        canDelete={employees.length > 1}
+                        onRemove={() => onRemoveEmployee(emp.id)}
+                        onUpdate={handleUpdate(emp.id)}
+                        viewMode={viewMode}
+                    />
+                ))}
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col sm:flex-row gap-2 max-w-2xl mx-auto px-4 sm:px-0">
+                <Button
+                    variant="outline"
+                    onClick={onAddEmployee}
+                    className="flex-1 h-10 border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium"
+                >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Dodaj pracownika
+                </Button>
+                <Button
+                    variant="outline"
+                    onClick={handleAddMultiple}
+                    className="sm:w-auto h-10 border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium"
+                >
+                    <Plus className="w-4 h-4 mr-2" />
+                    +5
+                </Button>
+            </div>
+
+            {/* Tip */}
+            {employees.length > 10 && (
+                <p className="text-xs text-center text-slate-400 max-w-2xl mx-auto">
+                    💡 Wskazówka: Użyj trybu kompaktowego dla lepszej
+                    widoczności
+                </p>
+            )}
+        </div>
+    );
+});
