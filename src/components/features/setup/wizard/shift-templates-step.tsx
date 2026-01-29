@@ -23,12 +23,12 @@ interface ShiftTemplatesStepProps {
     onUpdateShiftTemplate: (
         id: string,
         field: keyof ShiftTemplate,
-        value: string | string[] | number | number[]
+        value: string | string[] | number | number[],
     ) => void;
     onToggleDayForTemplate: (templateId: string, dayIndex: number) => void;
     onToggleEmployeeAssignment: (
         templateId: string,
-        employeeId: string
+        employeeId: string,
     ) => void;
 }
 
@@ -118,7 +118,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
     onRemove: () => void;
     onUpdate: (
         field: keyof ShiftTemplate,
-        value: string | string[] | number | number[]
+        value: string | string[] | number | number[],
     ) => void;
     onToggleDay: (dayIndex: number) => void;
     onToggleEmployee: (employeeId: string) => void;
@@ -129,16 +129,16 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
 
     const validEmployees = useMemo(
         () => employees.filter((e) => e.firstName.trim() && e.lastName.trim()),
-        [employees]
+        [employees],
     );
 
     const allAssigned = useMemo(
         () =>
             validEmployees.length > 0 &&
             validEmployees.every((e) =>
-                template.assignedEmployees.includes(e.id)
+                template.assignedEmployees.includes(e.id),
             ),
-        [validEmployees, template.assignedEmployees]
+        [validEmployees, template.assignedEmployees],
     );
 
     const handleToggleAll = () => {
@@ -173,7 +173,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                 "p-4 rounded-xl border-2 bg-white space-y-4 transition-colors relative",
                 hasError
                     ? "border-red-200 bg-red-50/30"
-                    : "border-slate-200 hover:border-slate-300"
+                    : "border-slate-200 hover:border-slate-300",
             )}
         >
             {/* Delete button in top right */}
@@ -237,7 +237,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                         onChange={(e) =>
                             onUpdate(
                                 "breakMinutes",
-                                parseInt(e.target.value) || 0
+                                parseInt(e.target.value) || 0,
                             )
                         }
                         className="h-10 text-sm"
@@ -255,7 +255,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                         onChange={(e) =>
                             onUpdate(
                                 "minEmployees",
-                                parseInt(e.target.value) || 0
+                                parseInt(e.target.value) || 0,
                             )
                         }
                         className="h-10 text-sm"
@@ -267,15 +267,13 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                     </Label>
                     <Input
                         type="number"
-                        min={template.minEmployees || 0}
+                        min={1}
                         max={20}
                         value={template.maxEmployees || ""}
-                        onChange={(e) =>
-                            onUpdate(
-                                "maxEmployees",
-                                parseInt(e.target.value) || 0
-                            )
-                        }
+                        onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            onUpdate("maxEmployees", val === 0 ? 0 : val);
+                        }}
                         placeholder="Bez limitu"
                         className="h-10 text-sm"
                     />
@@ -292,7 +290,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                         {calculateWorkHours(
                             template.startTime,
                             template.endTime,
-                            template.breakMinutes
+                            template.breakMinutes,
                         )}
                     </span>
                 </div>
@@ -359,8 +357,8 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                                             ? "bg-slate-900 text-white border-slate-900 shadow-sm"
                                             : "bg-amber-500 text-white border-amber-500 shadow-sm"
                                         : isDayOpen
-                                        ? "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-                                        : "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+                                          ? "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                                          : "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed",
                                 )}
                                 title={
                                     !isDayOpen
@@ -432,7 +430,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                                 const isAssigned =
                                     template.assignedEmployees.includes(emp.id);
                                 const empConfig = EMPLOYMENT_TYPES.find(
-                                    (t) => t.value === emp.employmentType
+                                    (t) => t.value === emp.employmentType,
                                 );
                                 const empLabel =
                                     emp.employmentType === "custom" &&
@@ -449,13 +447,13 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                                             "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all border-2",
                                             isAssigned
                                                 ? "bg-blue-50 text-blue-700 border-blue-500 shadow-sm"
-                                                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                                                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50",
                                         )}
                                     >
                                         <div
                                             className={cn(
                                                 "w-6 h-6 rounded text-white text-[10px] font-bold flex items-center justify-center shrink-0",
-                                                !isAssigned && "opacity-60"
+                                                !isAssigned && "opacity-60",
                                             )}
                                             style={{
                                                 backgroundColor: emp.color,
@@ -475,7 +473,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                                                         "text-[10px] font-semibold",
                                                         isAssigned
                                                             ? "text-blue-500"
-                                                            : "text-slate-400"
+                                                            : "text-slate-400",
                                                     )}
                                                 >
                                                     {empLabel}

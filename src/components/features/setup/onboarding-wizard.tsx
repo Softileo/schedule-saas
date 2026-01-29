@@ -34,7 +34,7 @@ import type { Employee, ShiftTemplate, EmploymentType } from "./wizard";
 // Helper to validate if all shifts together cover opening hours for each day
 function validateAllShiftsCoverage(
     templates: ShiftTemplate[],
-    openingHours: OpeningHours
+    openingHours: OpeningHours,
 ): string | null {
     const validTemplates = templates.filter((t) => t.startTime && t.endTime);
     if (validTemplates.length === 0) return null;
@@ -65,7 +65,7 @@ function validateAllShiftsCoverage(
 
         const dayIndex = dayKeyToIndex[dayKey];
         const shiftsForDay = validTemplates.filter((t) =>
-            t.applicableDays.includes(dayIndex)
+            t.applicableDays.includes(dayIndex),
         );
 
         if (shiftsForDay.length === 0) continue;
@@ -124,7 +124,7 @@ export function OnboardingWizard() {
 
     // Step 2 - Opening Hours
     const [openingHours, setOpeningHours] = useState<OpeningHours>(
-        DEFAULT_WEEKLY_OPENING_HOURS
+        DEFAULT_WEEKLY_OPENING_HOURS,
     );
     const [sundayMode, setSundayMode] = useState<"all" | "custom">("custom");
     const [customSundays] = useState<string[]>(getDefaultTradingSundays());
@@ -160,14 +160,14 @@ export function OnboardingWizard() {
         (
             day: keyof OpeningHours,
             field: keyof DayOpeningHours,
-            value: string | boolean
+            value: string | boolean,
         ) => {
             setOpeningHours((prev) => ({
                 ...prev,
                 [day]: { ...prev[day], [field]: value },
             }));
         },
-        []
+        [],
     );
 
     // Handlers for Employees
@@ -191,7 +191,7 @@ export function OnboardingWizard() {
                 setEmployees((prev) => prev.filter((e) => e.id !== id));
             }
         },
-        [employees.length]
+        [employees.length],
     );
 
     const updateEmployee = useCallback(
@@ -207,10 +207,10 @@ export function OnboardingWizard() {
                         };
                     }
                     return { ...e, [field]: value };
-                })
+                }),
             );
         },
-        []
+        [],
     );
 
     // Handlers for Shift Templates
@@ -238,20 +238,20 @@ export function OnboardingWizard() {
                 setShiftTemplates((prev) => prev.filter((t) => t.id !== id));
             }
         },
-        [shiftTemplates.length]
+        [shiftTemplates.length],
     );
 
     const updateShiftTemplate = useCallback(
         (
             id: string,
             field: keyof ShiftTemplate,
-            value: string | string[] | number | number[]
+            value: string | string[] | number | number[],
         ) => {
             setShiftTemplates((prev) =>
-                prev.map((t) => (t.id === id ? { ...t, [field]: value } : t))
+                prev.map((t) => (t.id === id ? { ...t, [field]: value } : t)),
             );
         },
-        []
+        [],
     );
 
     const toggleDayForTemplate = useCallback(
@@ -265,13 +265,13 @@ export function OnboardingWizard() {
                         applicableDays: isSelected
                             ? t.applicableDays.filter((d) => d !== dayIndex)
                             : [...t.applicableDays, dayIndex].sort(
-                                  (a, b) => a - b
+                                  (a, b) => a - b,
                               ),
                     };
-                })
+                }),
             );
         },
-        []
+        [],
     );
 
     const toggleEmployeeAssignment = useCallback(
@@ -284,14 +284,14 @@ export function OnboardingWizard() {
                         ...t,
                         assignedEmployees: isAssigned
                             ? t.assignedEmployees.filter(
-                                  (id) => id !== employeeId
+                                  (id) => id !== employeeId,
                               )
                             : [...t.assignedEmployees, employeeId],
                     };
-                })
+                }),
             );
         },
-        []
+        [],
     );
 
     // Validation
@@ -303,15 +303,15 @@ export function OnboardingWizard() {
                 return Object.values(openingHours).some((day) => day.enabled);
             case 3:
                 return employees.some(
-                    (e) => e.firstName.trim() && e.lastName.trim()
+                    (e) => e.firstName.trim() && e.lastName.trim(),
                 );
             case 4: {
                 const hasValidTemplate = shiftTemplates.some(
-                    (t) => t.startTime && t.endTime
+                    (t) => t.startTime && t.endTime,
                 );
                 if (!hasValidTemplate) return false;
                 const hasErrors = shiftTemplates.some(
-                    (t) => getShiftValidationError(t, openingHours) !== null
+                    (t) => getShiftValidationError(t, openingHours) !== null,
                 );
                 return !hasErrors;
             }
@@ -324,7 +324,7 @@ export function OnboardingWizard() {
     const handleComplete = async () => {
         const coverageError = validateAllShiftsCoverage(
             shiftTemplates,
-            openingHours
+            openingHours,
         );
         if (coverageError) {
             toast.error(coverageError);
@@ -378,7 +378,7 @@ export function OnboardingWizard() {
 
             // 4. Create employees
             const validEmployees = employees.filter(
-                (e) => e.firstName.trim() && e.lastName.trim()
+                (e) => e.firstName.trim() && e.lastName.trim(),
             );
             const employeeIdMap = new Map<string, string>();
 
@@ -406,14 +406,14 @@ export function OnboardingWizard() {
 
             // 5. Create shift templates
             const validTemplates = shiftTemplates.filter(
-                (t) => t.startTime && t.endTime
+                (t) => t.startTime && t.endTime,
             );
 
             for (const template of validTemplates) {
                 const applicableDaysEnum: DayOfWeekEnum[] | null =
                     template.applicableDays.length > 0
                         ? template.applicableDays.map(
-                              (idx) => DAY_KEY_MAP[idx] as DayOfWeekEnum
+                              (idx) => DAY_KEY_MAP[idx] as DayOfWeekEnum,
                           )
                         : null;
 
@@ -430,7 +430,11 @@ export function OnboardingWizard() {
                             color: template.color,
                             break_minutes: template.breakMinutes,
                             min_employees: template.minEmployees || 0,
-                            max_employees: template.maxEmployees || 0,
+                            max_employees:
+                                template.maxEmployees &&
+                                template.maxEmployees > 0
+                                    ? template.maxEmployees
+                                    : null,
                             applicable_days: applicableDaysEnum,
                         })
                         .select()
@@ -458,7 +462,7 @@ export function OnboardingWizard() {
                         if (assignError) {
                             logger.error(
                                 "Error saving template assignments:",
-                                assignError
+                                assignError,
                             );
                         }
                     }

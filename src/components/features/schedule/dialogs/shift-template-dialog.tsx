@@ -378,18 +378,20 @@ export function ShiftTemplateDialog({
                                 </Label>
                                 <Input
                                     type="number"
-                                    min={0}
+                                    min={1}
                                     max={50}
-                                    placeholder="∞"
+                                    placeholder="Bez limitu"
                                     value={formData.maxEmployees ?? ""}
-                                    onChange={(e) =>
+                                    onChange={(e) => {
+                                        const val = e.target.value
+                                            ? parseInt(e.target.value)
+                                            : null;
                                         setFormData({
                                             ...formData,
-                                            maxEmployees: e.target.value
-                                                ? parseInt(e.target.value)
-                                                : null,
-                                        })
-                                    }
+                                            maxEmployees:
+                                                val === 0 ? null : val,
+                                        });
+                                    }}
                                     className="h-10"
                                 />
                             </div>
