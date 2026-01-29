@@ -5,7 +5,7 @@
  */
 
 
-import { Employee } from "@/components/features/setup/wizard/types";
+import type { Employee } from "@/types";
 import type { ValidationError } from "@/lib/core/schedule/validation";
 
 interface ValidationHandlerCallbacks {
