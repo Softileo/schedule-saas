@@ -7,6 +7,8 @@
         "build": "next build",
         "start": "next start",
         "lint": "eslint",
+        "knip": "npx knip",
+        "jscpd": "npx jscpd ./src",
         "test": "vitest run",
         "test:watch": "vitest",
         "test:quick": "vitest run",
