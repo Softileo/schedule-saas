@@ -6,6 +6,7 @@ import type { Employee, EmployeeAbsence } from "@/types";
 import { getEmployeeFullName } from "@/lib/core/employees/utils";
 import { calculateRestHours } from "@/lib/scheduler/scheduler-utils";
 import { calculateShiftHours } from "@/lib/utils/time-helpers";
+import { getEmployeeShiftsSorted } from "@/lib/utils/shift-helpers";
 import {
     MIN_DAILY_REST_HOURS,
     MAX_DAILY_WORK_HOURS,
@@ -111,14 +112,10 @@ export function useScheduleViolations({
 
         employees.forEach((emp) => {
             const employeeName = getEmployeeFullName(emp);
-            const employeeShifts = activeShifts
-                .filter((s) => s.employee_id === emp.id)
-                .sort((a, b) => {
-                    const dateCompare = a.date.localeCompare(b.date);
-
-                    if (dateCompare !== 0) return dateCompare;
-                    return a.end_time.localeCompare(b.end_time);
-                });
+            const employeeShifts = getEmployeeShiftsSorted(
+                emp.id,
+                activeShifts,
+            );
 
             // 0. Sprawdź kolizje z nieobecnościami
             const employeeAbsences = absences.filter(

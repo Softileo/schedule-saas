@@ -19,6 +19,7 @@ import {
     toastHoursComplete,
     toastShiftMoved,
 } from "@/lib/core/schedule/toasts";
+import { handleShiftValidationError } from "@/lib/utils/shift-validation-handler";
 import type { LocalShift } from "./use-local-shifts";
 import type {
     Employee,
@@ -37,7 +38,7 @@ interface UseScheduleDnDProps {
         employeeId: string,
         date: string,
         startTime: string,
-        endTime: string
+        endTime: string,
     ) => boolean;
     onAddShift: (shift: LocalShift) => void;
     onUpdateShift: (shiftId: string, updates: Partial<LocalShift>) => void;
@@ -62,7 +63,7 @@ export function useScheduleDnD({
         }),
         useSensor(TouchSensor, {
             activationConstraint: { delay: 150, tolerance: 5 },
-        })
+        }),
     );
 
     const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -104,25 +105,21 @@ export function useScheduleDnD({
                         employeeAbsences,
                         templateAssignments,
                         activeShifts,
-                    }
+                    },
                 );
 
-                if (validationError) {
-                    switch (validationError.type) {
-                        case "absence":
-                            toastEmployeeAbsence(employee);
-                            return;
-                        case "not_assigned":
-                            toastNotAssignedToTemplate(
-                                employee,
-                                validationError.startTime,
-                                validationError.endTime
-                            );
-                            return;
-                        case "already_working":
-                            toastAlreadyWorking(employee);
-                            return;
-                    }
+                const shouldCancel = handleShiftValidationError(
+                    validationError,
+                    employee,
+                    {
+                        toastEmployeeAbsence,
+                        toastNotAssignedToTemplate,
+                        toastAlreadyWorking,
+                    },
+                );
+
+                if (shouldCancel) {
+                    return;
                 }
 
                 // Check 11h rest violation (warning only, doesn't block)
@@ -130,7 +127,7 @@ export function useScheduleDnD({
                     employee.id,
                     date,
                     template.start_time,
-                    template.end_time
+                    template.end_time,
                 );
                 if (hasViolation) {
                     toastRestViolation(employee);
@@ -150,7 +147,7 @@ export function useScheduleDnD({
                     toastHoursComplete(
                         employee,
                         hours.scheduled,
-                        hours.required
+                        hours.required,
                     );
                 }
             }
@@ -182,25 +179,21 @@ export function useScheduleDnD({
                         templateAssignments,
                         activeShifts,
                         excludeShiftId: shift.id,
-                    }
+                    },
                 );
 
-                if (validationError) {
-                    switch (validationError.type) {
-                        case "absence":
-                            toastEmployeeAbsence(employee);
-                            return;
-                        case "not_assigned":
-                            toastNotAssignedToTemplate(
-                                employee,
-                                validationError.startTime,
-                                validationError.endTime
-                            );
-                            return;
-                        case "already_working":
-                            toastAlreadyWorking(employee);
-                            return;
-                    }
+                const shouldCancel = handleShiftValidationError(
+                    validationError,
+                    employee,
+                    {
+                        toastEmployeeAbsence,
+                        toastNotAssignedToTemplate,
+                        toastAlreadyWorking,
+                    },
+                );
+
+                if (shouldCancel) {
+                    return;
                 }
 
                 onUpdateShift(shift.id, {
@@ -223,7 +216,7 @@ export function useScheduleDnD({
             checkRestViolation,
             onAddShift,
             onUpdateShift,
-        ]
+        ],
     );
 
     return {

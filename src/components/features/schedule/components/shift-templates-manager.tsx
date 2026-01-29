@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { ShiftTemplate } from "@/types";
 import { Button } from "@/components/ui/button";
+import { calculateShiftDuration } from "@/lib/utils/time-helpers";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -12,6 +13,7 @@ import { Plus, Settings, Users, Pencil, Trash2, Clock } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { ShiftTemplateDialog } from "../dialogs/shift-template-dialog";
 import { useShiftTemplates } from "@/lib/hooks/use-shift-templates";
+import { ShiftTemplateAvatar } from "./shift-template-avatar";
 
 interface ShiftTemplatesManagerProps {
     templates: ShiftTemplate[];
@@ -91,54 +93,20 @@ export function ShiftTemplatesManager({
                         {sortedTemplates.length > 0 ? (
                             <>
                                 {sortedTemplates.map((template) => {
-                                    // Calculate shift duration
-                                    const [startH, startM] = template.start_time
-                                        .split(":")
-                                        .map(Number);
-                                    const [endH, endM] = template.end_time
-                                        .split(":")
-                                        .map(Number);
-                                    let duration =
-                                        endH * 60 +
-                                        endM -
-                                        (startH * 60 + startM);
-                                    if (duration < 0) duration += 24 * 60;
-                                    const hours = Math.floor(duration / 60);
-                                    const mins = duration % 60;
+                                    const { hours, mins } =
+                                        calculateShiftDuration(
+                                            template.start_time,
+                                            template.end_time,
+                                        );
 
                                     return (
                                         <div
                                             key={template.id}
                                             className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition-colors group"
                                         >
-                                            <div
-                                                className="w-11 h-11 rounded-lg flex flex-col items-center justify-center border shadow-sm shrink-0"
-                                                style={{
-                                                    backgroundColor:
-                                                        template.color
-                                                            ? `${template.color}15`
-                                                            : undefined,
-                                                    borderColor: template.color
-                                                        ? `${template.color}35`
-                                                        : undefined,
-                                                    color:
-                                                        template.color ??
-                                                        undefined,
-                                                }}
-                                            >
-                                                <span className="font-bold text-[11px] leading-none">
-                                                    {template.start_time.substring(
-                                                        0,
-                                                        5,
-                                                    )}
-                                                </span>
-                                                <span className="opacity-60 text-[9px] leading-none mt-0.5">
-                                                    {template.end_time.substring(
-                                                        0,
-                                                        5,
-                                                    )}
-                                                </span>
-                                            </div>
+                                            <ShiftTemplateAvatar
+                                                template={template}
+                                            />
                                             <div className="min-w-0 flex-1">
                                                 <div className="font-medium text-sm text-slate-800">
                                                     {template.start_time.substring(
@@ -162,7 +130,9 @@ export function ShiftTemplatesManager({
                                                         <span className="flex items-center gap-0.5 text-blue-600">
                                                             <Users className="h-3 w-3" />
                                                             osoby{" "}
-                                                            {template.min_employees}
+                                                            {
+                                                                template.min_employees
+                                                            }
                                                             {template.max_employees
                                                                 ? `-${template.max_employees}`
                                                                 : "+"}

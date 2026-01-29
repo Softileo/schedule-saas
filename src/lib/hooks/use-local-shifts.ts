@@ -6,6 +6,11 @@ import { saveShiftsAction } from "@/lib/actions/schedule-actions";
 import { createClient } from "@/lib/supabase/client";
 import { logger } from "@/lib/utils/logger";
 import {
+    mapShiftFieldsWithoutId,
+    mapShiftFieldsWithId,
+    toLocalShift,
+} from "@/lib/utils/shift-mappers";
+import {
     calculateEmployeesScheduledHours,
     calculateEmployeesAbsenceInfo,
 } from "@/lib/services/schedule-calculator.service";
@@ -51,7 +56,7 @@ export function useLocalShifts({
         initialShifts.map((s) => ({
             ...s,
             status: "unchanged" as const,
-        }))
+        })),
     );
 
     // Reset przy zmianie miesiąca/roku/scheduleId (bez initialShifts w deps!)
@@ -63,7 +68,7 @@ export function useLocalShifts({
                 initialShifts.map((s) => ({
                     ...s,
                     status: "unchanged" as const,
-                }))
+                })),
             );
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -72,13 +77,13 @@ export function useLocalShifts({
     // Aktywne zmiany (nie usunięte)
     const activeShifts = useMemo(
         () => localShifts.filter((s) => s.status !== "deleted"),
-        [localShifts]
+        [localShifts],
     );
 
     // Czy są niezapisane zmiany
     const hasUnsavedChanges = useMemo(
         () => localShifts.some((s) => s.status !== "unchanged"),
-        [localShifts]
+        [localShifts],
     );
 
     // Oblicz godziny dla każdego pracownika (NIE pomniejszamy o nieobecności w wyświetlaniu)
@@ -88,7 +93,7 @@ export function useLocalShifts({
             activeShifts,
             year,
             month,
-            holidays
+            holidays,
         );
     }, [employees, activeShifts, year, month, holidays]);
 
@@ -100,7 +105,7 @@ export function useLocalShifts({
             year,
             month,
             holidays,
-            organizationSettings
+            organizationSettings,
         );
     }, [
         employees,
@@ -120,7 +125,7 @@ export function useLocalShifts({
                     return { ...s, status: "deleted" as const };
                 }
                 return { ...s, status: "deleted" as const };
-            })
+            }),
         );
     }, []);
 
@@ -135,10 +140,10 @@ export function useLocalShifts({
                         ...updates,
                         status: s.status === "new" ? "new" : "modified",
                     };
-                })
+                }),
             );
         },
-        []
+        [],
     );
 
     // Clear entire schedule
@@ -156,7 +161,7 @@ export function useLocalShifts({
                 end_time: string;
                 break_minutes: number;
             }>,
-            mode: "fast" | "balanced"
+            mode: "fast" | "balanced",
         ) => {
             logger.log("applyGeneratedShifts called with:", {
                 shiftsCount: generatedShifts.length,
@@ -167,7 +172,7 @@ export function useLocalShifts({
             const validShifts = generatedShifts.filter((shift) => {
                 if (!validEmployeeIds.has(shift.employee_id)) {
                     logger.warn(
-                        `Pominięto zmianę - nieznany pracownik: ${shift.employee_id}`
+                        `Pominięto zmianę - nieznany pracownik: ${shift.employee_id}`,
                     );
                     return false;
                 }
@@ -199,7 +204,7 @@ export function useLocalShifts({
 
             return newShifts.length;
         },
-        [scheduleId, employees]
+        [scheduleId, employees],
     );
 
     // Odśwież z bazy danych
@@ -217,20 +222,7 @@ export function useLocalShifts({
         }
 
         if (data) {
-            setLocalShifts(
-                data.map((s) => ({
-                    id: s.id,
-                    schedule_id: s.schedule_id,
-                    employee_id: s.employee_id,
-                    date: s.date,
-                    start_time: s.start_time,
-                    end_time: s.end_time,
-                    break_minutes: s.break_minutes,
-                    notes: s.notes,
-                    color: s.color,
-                    status: "unchanged" as const,
-                }))
-            );
+            setLocalShifts(data.map(toLocalShift));
         }
     }, [scheduleId, supabase]);
 
@@ -248,34 +240,15 @@ export function useLocalShifts({
         try {
             const toInsert = localShifts
                 .filter((s) => s.status === "new")
-                .map((s) => ({
-                    schedule_id: s.schedule_id,
-                    employee_id: s.employee_id,
-                    date: s.date,
-                    start_time: s.start_time,
-                    end_time: s.end_time,
-                    break_minutes: s.break_minutes,
-                    notes: s.notes,
-                    color: s.color,
-                }));
+                .map(mapShiftFieldsWithoutId);
 
             const toUpdate = localShifts
                 .filter((s) => s.status === "modified")
-                .map((s) => ({
-                    id: s.id,
-                    schedule_id: s.schedule_id,
-                    employee_id: s.employee_id,
-                    date: s.date,
-                    start_time: s.start_time,
-                    end_time: s.end_time,
-                    break_minutes: s.break_minutes,
-                    notes: s.notes,
-                    color: s.color,
-                }));
+                .map(mapShiftFieldsWithId);
 
             const toDelete = localShifts
                 .filter(
-                    (s) => s.status === "deleted" && !s.id.startsWith("temp-")
+                    (s) => s.status === "deleted" && !s.id.startsWith("temp-"),
                 )
                 .map((s) => s.id);
 
@@ -301,7 +274,7 @@ export function useLocalShifts({
                 refreshedShifts.map((s) => ({
                     ...s,
                     status: "unchanged" as const,
-                }))
+                })),
             );
 
             logger.log("=== ZAPIS ZAKOŃCZONY ===");

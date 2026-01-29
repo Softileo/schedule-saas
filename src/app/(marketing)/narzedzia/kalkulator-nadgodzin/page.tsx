@@ -13,6 +13,7 @@ import {
     Info,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FaqSection } from "@/components/common/marketing/faq-section";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -29,6 +30,9 @@ import {
     SchemaScript,
     Breadcrumbs,
     CTABanner,
+    WarningsPanel,
+    InfoBox,
+    EmptyStatePanel,
 } from "@/components/features/seo";
 import { generateFAQSchema, generateBreadcrumbSchema } from "@/lib/seo/schemas";
 
@@ -90,7 +94,7 @@ const breadcrumbSchemaItems = [
 export default function OvertimeCalculatorPage() {
     // Form state
     const [salaryType, setSalaryType] = useState<"monthly" | "hourly">(
-        "monthly"
+        "monthly",
     );
     const [salary, setSalary] = useState<string>("5000");
     const [overtimeHours50, setOvertimeHours50] = useState<string>("10");
@@ -133,26 +137,26 @@ export default function OvertimeCalculatorPage() {
         if (totalOvertimeHours > 150 / 12) {
             warnings.push(
                 `Uwaga: ${totalOvertimeHours.toFixed(
-                    0
-                )}h nadgodzin miesięcznie może przekroczyć roczny limit 150h.`
+                    0,
+                )}h nadgodzin miesięcznie może przekroczyć roczny limit 150h.`,
             );
         }
 
         if (totalOvertimeHours > 416 / 12) {
             warnings.push(
-                "Przekroczono maksymalny limit nadgodzin (416h/rok)!"
+                "Przekroczono maksymalny limit nadgodzin (416h/rok)!",
             );
         }
 
         if (salaryType === "hourly" && salaryNum < MIN_HOURLY_WAGE_2026) {
             warnings.push(
-                `Stawka poniżej minimalnej (${MIN_HOURLY_WAGE_2026} zł/h brutto w 2026).`
+                `Stawka poniżej minimalnej (${MIN_HOURLY_WAGE_2026} zł/h brutto w 2026).`,
             );
         }
 
         if (salaryType === "monthly" && salaryNum < MIN_MONTHLY_WAGE_2026) {
             warnings.push(
-                `Wynagrodzenie poniżej minimalnego (${MIN_MONTHLY_WAGE_2026} zł brutto w 2026).`
+                `Wynagrodzenie poniżej minimalnego (${MIN_MONTHLY_WAGE_2026} zł brutto w 2026).`,
             );
         }
 
@@ -318,7 +322,7 @@ export default function OvertimeCalculatorPage() {
                                         checked={includeNightBonus}
                                         onCheckedChange={(checked) =>
                                             setIncludeNightBonus(
-                                                checked as boolean
+                                                checked as boolean,
                                             )
                                         }
                                     />
@@ -373,7 +377,7 @@ export default function OvertimeCalculatorPage() {
                                             </span>
                                             <span className="font-semibold">
                                                 {formatCurrency(
-                                                    result.baseHourlyRate
+                                                    result.baseHourlyRate,
                                                 )}
                                                 /h
                                             </span>
@@ -400,7 +404,7 @@ export default function OvertimeCalculatorPage() {
                                             <span className="font-semibold text-red-600">
                                                 +
                                                 {formatCurrency(
-                                                    result.bonus100
+                                                    result.bonus100,
                                                 )}
                                             </span>
                                         </div>
@@ -412,7 +416,7 @@ export default function OvertimeCalculatorPage() {
                                             </span>
                                             <span className="font-bold text-orange-600">
                                                 {formatCurrency(
-                                                    result.totalBonus
+                                                    result.totalBonus,
                                                 )}
                                             </span>
                                         </div>
@@ -424,34 +428,18 @@ export default function OvertimeCalculatorPage() {
                                             </span>
                                             <span className="text-2xl font-bold text-orange-700">
                                                 {formatCurrency(
-                                                    result.totalGross
+                                                    result.totalGross,
                                                 )}
                                             </span>
                                         </div>
 
                                         {/* Warnings */}
-                                        {result.warnings.length > 0 && (
-                                            <div className="mt-4 space-y-2">
-                                                {result.warnings.map(
-                                                    (warning, index) => (
-                                                        <div
-                                                            key={index}
-                                                            className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm"
-                                                        >
-                                                            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                                                            <span className="text-amber-800">
-                                                                {warning}
-                                                            </span>
-                                                        </div>
-                                                    )
-                                                )}
-                                            </div>
-                                        )}
+                                        <WarningsPanel
+                                            warnings={result.warnings}
+                                        />
                                     </div>
                                 ) : (
-                                    <p className="text-center text-muted-foreground py-8">
-                                        Wprowadź dane, aby zobaczyć wynik
-                                    </p>
+                                    <EmptyStatePanel />
                                 )}
                             </CardContent>
                         </Card>
@@ -637,25 +625,7 @@ export default function OvertimeCalculatorPage() {
                 </div>
 
                 {/* FAQ Section */}
-                <div className="max-w-4xl mx-auto mb-16">
-                    <h2 className="text-2xl font-bold mb-6 text-center">
-                        Najczęściej zadawane pytania
-                    </h2>
-                    <div className="space-y-4">
-                        {faqItems.map((item, index) => (
-                            <Card key={index}>
-                                <CardContent className="pt-6">
-                                    <h3 className="font-semibold mb-2">
-                                        {item.question}
-                                    </h3>
-                                    <p className="text-muted-foreground">
-                                        {item.answer}
-                                    </p>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
-                </div>
+                <FaqSection faqItems={faqItems} />
 
                 {/* Related links */}
                 <div className="max-w-4xl mx-auto mb-16">

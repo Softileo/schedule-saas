@@ -16,9 +16,34 @@ import {
 import { type SchedulerContext } from "./scheduler-context";
 import { canEmployeeWorkOnDate } from "../validation";
 import { candidateScorer } from "./scoring-engine";
+import { sortCandidatesByPriority } from "./candidate-sorting";
 
 export class CandidateFinder {
     constructor(private context: SchedulerContext) {}
+
+    /**
+     * Check if template has reached max employees limit for given day
+     */
+    private isTemplateAtMaxCapacity(
+        day: string,
+        template: ShiftTemplate,
+    ): boolean {
+        if (
+            template.max_employees === null ||
+            template.max_employees === undefined
+        ) {
+            return false;
+        }
+
+        const dayTemplateMap = this.context.dailyTemplateStaffing.get(day);
+        if (!dayTemplateMap) return false;
+
+        const templateStaff = dayTemplateMap.get(template.id);
+        return (
+            templateStaff !== undefined &&
+            templateStaff.length >= template.max_employees
+        );
+    }
 
     findBestCandidate(
         day: string,
@@ -151,125 +176,57 @@ export class CandidateFinder {
 
         const templateHours = getTemplateHours(template);
 
-        const candidates = Array.from(this.context.employeeStates.values())
-            .filter((state) => {
-                if (state.occupiedDates.has(day)) return false;
-                if (!state.availableTemplates.some((t) => t.id === template.id))
-                    return false;
+        const candidates = Array.from(
+            this.context.employeeStates.values(),
+        ).filter((state) => {
+            if (state.occupiedDates.has(day)) return false;
+            if (!state.availableTemplates.some((t) => t.id === template.id))
+                return false;
 
-                if (
-                    !canEmployeeWorkOnDate(
-                        state.emp,
-                        day,
-                        this.context.input.holidays,
-                    )
+            if (
+                !canEmployeeWorkOnDate(
+                    state.emp,
+                    day,
+                    this.context.input.holidays,
                 )
-                    return false;
+            )
+                return false;
 
-                if (
-                    isWeekend &&
-                    state.emp.preferences?.can_work_weekends === false
-                )
-                    return false;
+            if (isWeekend && state.emp.preferences?.can_work_weekends === false)
+                return false;
 
-                if (
-                    template.max_employees !== null &&
-                    template.max_employees !== undefined
-                ) {
-                    const dayTemplateMap =
-                        this.context.dailyTemplateStaffing.get(day);
-                    if (dayTemplateMap) {
-                        const templateStaff = dayTemplateMap.get(template.id);
-                        if (
-                            templateStaff &&
-                            templateStaff.length >= template.max_employees
-                        ) {
-                            return false;
-                        }
-                    }
-                }
+            if (this.isTemplateAtMaxCapacity(day, template)) {
+                return false;
+            }
 
-                // ROZLUŹNIONY LIMIT: Pozwól na nadgodziny do +50% etatu (ale nie więcej niż twardy limit)
-                // Użytkownik chce mniej godzin, ale jeśli brakuje ludzi - trzeba dać nadgodziny.
-                // Zmieniam +4h na logiczniejszy limit procentowy.
-                const hours = getTemplateHours(template);
-                if (state.currentHours + hours > state.requiredHours * 1.5) {
-                    return false;
-                }
+            // ROZLUŹNIONY LIMIT: Pozwól na nadgodziny do +50% etatu (ale nie więcej niż twardy limit)
+            // Użytkownik chce mniej godzin, ale jeśli brakuje ludzi - trzeba dać nadgodziny.
+            // Zmieniam +4h na logiczniejszy limit procentowy.
+            const hours = getTemplateHours(template);
+            if (state.currentHours + hours > state.requiredHours * 1.5) {
+                return false;
+            }
 
-                // HARD CAP: Max 200h
-                if (state.currentHours + hours > 200) return false;
+            // HARD CAP: Max 200h
+            if (state.currentHours + hours > 200) return false;
 
-                if (!this.checkDailyRest(state, day, template)) {
-                    return false;
-                }
+            if (!this.checkDailyRest(state, day, template)) {
+                return false;
+            }
 
-                if (!this.checkConsecutiveDays(state, day)) {
-                    return false;
-                }
+            if (!this.checkConsecutiveDays(state, day)) {
+                return false;
+            }
 
-                return true;
-            })
-            .sort((a, b) => {
-                const overtimeA = Math.max(
-                    0,
-                    a.currentHours + templateHours - a.requiredHours,
-                );
-                const overtimeB = Math.max(
-                    0,
-                    b.currentHours + templateHours - b.requiredHours,
-                );
+            return true;
+        });
 
-                // 1. Priorytet: Unikanie nadgodzin
-                if (Math.abs(overtimeA - overtimeB) > 0.01) {
-                    return overtimeA - overtimeB;
-                }
-
-                // 2. Balansowanie weekendów (jeśli to weekend)
-                if (isWeekend) {
-                    if (a.weekendShiftCount !== b.weekendShiftCount) {
-                        return a.weekendShiftCount - b.weekendShiftCount;
-                    }
-                }
-
-                // 3. Balansowanie typów zmian (Rano/Popołudnie/Wieczór)
-                const shiftType = getShiftTimeType(
-                    template.start_time,
-                    template.name,
-                );
-                let typeCountA = 0;
-                let typeCountB = 0;
-
-                if (shiftType === "morning") {
-                    typeCountA = a.morningShiftCount;
-                    typeCountB = b.morningShiftCount;
-                } else if (shiftType === "afternoon") {
-                    typeCountA = a.afternoonShiftCount;
-                    typeCountB = b.afternoonShiftCount;
-                } else {
-                    typeCountA = a.eveningShiftCount;
-                    typeCountB = b.eveningShiftCount;
-                }
-
-                if (typeCountA !== typeCountB) {
-                    return typeCountA - typeCountB;
-                }
-
-                // 4. Wyrównywanie % wykonania planu (kto ma większy deficyt procentowy)
-                const saturationA =
-                    a.requiredHours > 0 ? a.currentHours / a.requiredHours : 1;
-                const saturationB =
-                    b.requiredHours > 0 ? b.currentHours / b.requiredHours : 1;
-
-                if (Math.abs(saturationA - saturationB) > 0.01) {
-                    return saturationA - saturationB;
-                }
-
-                // 5. Ostateczny tie-breaker: liczba zmian
-                return a.shifts.length - b.shifts.length;
-            });
-
-        return candidates[0] || null;
+        const sortedCandidates = sortCandidatesByPriority(
+            candidates,
+            template,
+            isWeekend,
+        );
+        return sortedCandidates[0] || null;
     }
 
     findDesperateCandidate(
@@ -315,21 +272,8 @@ export class CandidateFinder {
                     return false;
 
                 // 5. Max employees check - to musimy respektować
-                if (
-                    template.max_employees !== null &&
-                    template.max_employees !== undefined
-                ) {
-                    const dayTemplateMap =
-                        this.context.dailyTemplateStaffing.get(day);
-                    if (dayTemplateMap) {
-                        const templateStaff = dayTemplateMap.get(template.id);
-                        if (
-                            templateStaff &&
-                            templateStaff.length >= template.max_employees
-                        ) {
-                            return false;
-                        }
-                    }
+                if (this.isTemplateAtMaxCapacity(day, template)) {
+                    return false;
                 }
 
                 // 6. Odpoczynek dobowy (HARD - KODEKS PRACY)
@@ -388,20 +332,8 @@ export class CandidateFinder {
         )
             return false;
 
-        if (
-            template.max_employees !== null &&
-            template.max_employees !== undefined
-        ) {
-            const dayTemplateMap = this.context.dailyTemplateStaffing.get(date);
-            if (dayTemplateMap) {
-                const templateStaff = dayTemplateMap.get(template.id);
-                if (
-                    templateStaff &&
-                    templateStaff.length >= template.max_employees
-                ) {
-                    return false;
-                }
-            }
+        if (this.isTemplateAtMaxCapacity(date, template)) {
+            return false;
         }
 
         // Check applicable days
@@ -526,87 +458,84 @@ export class CandidateFinder {
             }
         }
 
-        const candidates = Array.from(this.context.employeeStates.values())
-            .filter((state) => {
-                // 1. Czy już nie pracuje w tym dniu?
-                if (state.occupiedDates.has(day)) return false;
+        const candidates = Array.from(
+            this.context.employeeStates.values(),
+        ).filter((state) => {
+            // 1. Czy już nie pracuje w tym dniu?
+            if (state.occupiedDates.has(day)) return false;
 
-                // 2. Czy ma ten szablon dostępny? (kompetencje)
-                if (!state.availableTemplates.some((t) => t.id === template.id))
-                    return false;
+            // 2. Czy ma ten szablon dostępny? (kompetencje)
+            if (!state.availableTemplates.some((t) => t.id === template.id))
+                return false;
 
-                // 3. Czy może pracować w ten dzień (absencje)
-                if (
-                    !canEmployeeWorkOnDate(
-                        state.emp,
-                        day,
-                        this.context.input.holidays,
-                    )
+            // 3. Czy może pracować w ten dzień (absencje)
+            if (
+                !canEmployeeWorkOnDate(
+                    state.emp,
+                    day,
+                    this.context.input.holidays,
                 )
-                    return false;
+            )
+                return false;
 
-                // 4. Weekend - sprawdź tylko hard constraint
-                if (
-                    isWeekend &&
-                    state.emp.preferences?.can_work_weekends === false
-                )
-                    return false;
+            // 4. Weekend - sprawdź tylko hard constraint
+            if (isWeekend && state.emp.preferences?.can_work_weekends === false)
+                return false;
 
-                // 5. Max employees na szablon
-                if (
-                    template.max_employees !== null &&
-                    template.max_employees !== undefined
-                ) {
-                    const dayTemplateMap =
-                        this.context.dailyTemplateStaffing.get(day);
-                    if (dayTemplateMap) {
-                        const templateStaff = dayTemplateMap.get(template.id);
-                        if (
-                            templateStaff &&
-                            templateStaff.length >= template.max_employees
-                        ) {
-                            return false;
-                        }
+            // 5. Max employees na szablon
+            if (
+                template.max_employees !== null &&
+                template.max_employees !== undefined
+            ) {
+                const dayTemplateMap =
+                    this.context.dailyTemplateStaffing.get(day);
+                if (dayTemplateMap) {
+                    const templateStaff = dayTemplateMap.get(template.id);
+                    if (
+                        templateStaff &&
+                        templateStaff.length >= template.max_employees
+                    ) {
+                        return false;
                     }
                 }
+            }
 
-                // 6. Odpoczynek dobowy 11h (HARD - KODEKS PRACY)
-                if (!this.checkDailyRest(state, day, template)) {
-                    return false;
-                }
+            // 6. Odpoczynek dobowy 11h (HARD - KODEKS PRACY)
+            if (!this.checkDailyRest(state, day, template)) {
+                return false;
+            }
 
-                // 7. Max 7 dni z rzędu (HARD)
-                if (!this.checkConsecutiveDays(state, day, 7)) {
-                    return false;
-                }
+            // 7. Max 7 dni z rzędu (HARD)
+            if (!this.checkConsecutiveDays(state, day, 7)) {
+                return false;
+            }
 
-                // 8. Limit 48h/tydzień (HARD - Kodeks Pracy)
-                if (!this.checkWeeklyLimit(state, day, template)) {
-                    return false;
-                }
+            // 8. Limit 48h/tydzień (HARD - Kodeks Pracy)
+            if (!this.checkWeeklyLimit(state, day, template)) {
+                return false;
+            }
 
-                // 9. EMERGENCY: Pozwalamy na nadgodziny do +16h ponad etat
-                // (bo to sytuacja awaryjna gdy wszyscy inni na urlopie)
-                const hours = getTemplateHours(template);
-                const MAX_EMERGENCY_OVERTIME = 16; // Max 2 dni nadgodzin w miesiącu
+            // 9. EMERGENCY: Pozwalamy na nadgodziny do +16h ponad etat
+            // (bo to sytuacja awaryjna gdy wszyscy inni na urlopie)
+            const hours = getTemplateHours(template);
+            const MAX_EMERGENCY_OVERTIME = 16; // Max 2 dni nadgodzin w miesiącu
 
-                if (
-                    state.currentHours + hours >
-                    state.requiredHours + MAX_EMERGENCY_OVERTIME
-                ) {
-                    return false;
-                }
+            if (
+                state.currentHours + hours >
+                state.requiredHours + MAX_EMERGENCY_OVERTIME
+            ) {
+                return false;
+            }
 
-                return true;
-            })
-            .sort((a, b) => {
-                // Preferujemy tych z mniejszymi nadgodzinami
-                const overtimeA = Math.max(0, a.currentHours - a.requiredHours);
-                const overtimeB = Math.max(0, b.currentHours - b.requiredHours);
-                return overtimeA - overtimeB;
-            });
+            return true;
+        });
 
-        return candidates[0] || null;
+        const sortedCandidates = sortCandidatesByPriority(
+            candidates,
+            template,
+            isWeekend,
+        );
+        return sortedCandidates[0] || null;
     }
 
     /**

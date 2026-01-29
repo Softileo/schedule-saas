@@ -10,6 +10,7 @@ import { EmployeeAvatar } from "@/components/features/employees/employee-avatar"
 import type { Employee } from "@/types";
 import Soon from "@/components/ui/soon";
 import { Button } from "@/components/ui/button";
+import { EmployeeListRenderer } from "./employee-list-renderer";
 
 interface EmployeesPanelProps {
     employees: Employee[];
@@ -346,22 +347,11 @@ export const EmployeesPanel = memo(function EmployeesPanel({
                     )}
                 </div>
 
-                <div className="space-y-1 overflow-y-auto flex-1 pr-2">
-                    {employees.map((employee) => {
-                        const hours = employeeHoursMap.get(employee.id) || {
-                            scheduled: 0,
-                            required: 0,
-                        };
-                        return (
-                            <DraggableEmployee
-                                key={employee.id}
-                                employee={employee}
-                                scheduledHours={hours.scheduled}
-                                requiredHours={hours.required}
-                            />
-                        );
-                    })}
-                </div>
+                <EmployeeListRenderer
+                    employees={employees}
+                    employeeHoursMap={employeeHoursMap}
+                    layout="list"
+                />
             </aside>
         );
     }
@@ -412,22 +402,11 @@ export const EmployeesPanel = memo(function EmployeesPanel({
                 </div>
                 <Legend />
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5">
-                {employees.map((employee) => {
-                    const hours = employeeHoursMap.get(employee.id) || {
-                        scheduled: 0,
-                        required: 0,
-                    };
-                    return (
-                        <DraggableEmployee
-                            key={employee.id}
-                            employee={employee}
-                            scheduledHours={hours.scheduled}
-                            requiredHours={hours.required}
-                        />
-                    );
-                })}
-            </div>
+            <EmployeeListRenderer
+                employees={employees}
+                employeeHoursMap={employeeHoursMap}
+                layout="grid"
+            />
         </div>
     );
 });

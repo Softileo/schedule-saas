@@ -6,6 +6,7 @@ import type { Employee } from "@/types";
 import { getEmployeeFullName } from "@/lib/core/employees/utils";
 import { calculateRestHours } from "@/lib/scheduler/scheduler-utils";
 import { MIN_DAILY_REST_HOURS } from "@/lib/constants/labor-code";
+import { getEmployeeShiftsSorted } from "@/lib/utils/shift-helpers";
 
 interface UseRestViolationsProps {
     employees: Employee[];
@@ -30,13 +31,10 @@ export function useRestViolations({
         const result: RestViolation[] = [];
 
         employees.forEach((emp) => {
-            const employeeShifts = activeShifts
-                .filter((s) => s.employee_id === emp.id)
-                .sort((a, b) => {
-                    const dateCompare = a.date.localeCompare(b.date);
-                    if (dateCompare !== 0) return dateCompare;
-                    return a.end_time.localeCompare(b.end_time);
-                });
+            const employeeShifts = getEmployeeShiftsSorted(
+                emp.id,
+                activeShifts,
+            );
 
             for (let i = 0; i < employeeShifts.length - 1; i++) {
                 const currentShift = employeeShifts[i];

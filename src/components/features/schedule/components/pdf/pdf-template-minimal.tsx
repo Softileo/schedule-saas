@@ -1,38 +1,22 @@
-import {
-    Document,
-    Page,
-    Text,
-    View,
-    StyleSheet,
-    Font,
-} from "@react-pdf/renderer";
-import {
-    format,
-    eachDayOfInterval,
-    startOfMonth,
-    endOfMonth,
-    getDay,
-} from "date-fns";
+import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+import { format, getDay } from "date-fns";
 import type { SchedulePDFData } from "./pdf-types";
-import { getDayName, chunkArray } from "./pdf-utils";
+import { chunkArray } from "./pdf-utils";
 import { formatTime } from "@/lib/utils/date-helpers";
 import { MONTH_NAMES } from "@/lib/utils/date-helpers";
 import { createHolidaysMap, isTradingSunday } from "@/lib/core/schedule/utils";
+import {
+    registerPDFFont,
+    generateDaysInMonth,
+    getActiveShifts,
+    createShiftGetter,
+    getCellBackgroundColor,
+    renderLegend,
+} from "./pdf-shared";
+import { renderTableHeaderRow } from "./pdf-renderers";
 
-// Rejestracja fontu
-Font.register({
-    family: "Roboto",
-    fonts: [
-        {
-            src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-webfont.ttf",
-            fontWeight: 400,
-        },
-        {
-            src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf",
-            fontWeight: 700,
-        },
-    ],
-});
+// Wywołaj rejestrację fontu
+registerPDFFont();
 
 // Ultra minimalistyczna paleta - tylko szarości
 const COLORS = {
@@ -217,33 +201,19 @@ export function PDFTemplateMinimal({ data }: PDFTemplateMinimalProps) {
         organizationSettings,
     } = data;
 
-    const daysInMonth = eachDayOfInterval({
-        start: startOfMonth(new Date(year, month - 1)),
-        end: endOfMonth(new Date(year, month - 1)),
-    });
-
+    const daysInMonth = generateDaysInMonth(year, month);
     const holidaysMap = createHolidaysMap(holidays);
-    const activeShifts = shifts.filter((s) => s.status !== "deleted");
+    const activeShifts = getActiveShifts(data);
     const dayColumnWidth = (842 - 56 - 100) / daysInMonth.length;
-
-    const getShiftForDay = (employeeId: string, date: string) => {
-        return activeShifts.find(
-            (s) => s.employee_id === employeeId && s.date === date,
-        );
-    };
+    const getShiftForDay = createShiftGetter(shifts);
 
     const getCellBgColor = (day: Date): string => {
-        const dateStr = format(day, "yyyy-MM-dd");
-        const holiday = holidaysMap.get(dateStr);
-        const dayOfWeek = getDay(day);
-        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-        const isTrading =
-            dayOfWeek === 0 && isTradingSunday(day, organizationSettings);
-
-        if (holiday) return COLORS.bgHoliday;
-        if (isTrading) return COLORS.bgTradingSunday;
-        if (isWeekend) return COLORS.bgWeekend;
-        return "transparent";
+        return getCellBackgroundColor(
+            day,
+            holidays,
+            organizationSettings,
+            COLORS,
+        );
     };
 
     const employeePages = chunkArray(employees, EMPLOYEES_PER_PAGE);
@@ -279,36 +249,12 @@ export function PDFTemplateMinimal({ data }: PDFTemplateMinimalProps) {
 
                     {/* Tabela */}
                     <View style={styles.table}>
-                        <View style={styles.headerRow}>
-                            <View style={styles.employeeHeaderCell}>
-                                <Text style={styles.employeeHeaderText}>
-                                    Pracownik
-                                </Text>
-                            </View>
-                            {daysInMonth.map((day) => {
-                                const dateStr = format(day, "yyyy-MM-dd");
-                                const bgColor = getCellBgColor(day);
-                                return (
-                                    <View
-                                        key={dateStr}
-                                        style={[
-                                            styles.dayHeaderCell,
-                                            { width: dayColumnWidth },
-                                            bgColor !== "transparent"
-                                                ? { backgroundColor: bgColor }
-                                                : {},
-                                        ]}
-                                    >
-                                        <Text style={styles.dayNumber}>
-                                            {format(day, "d")}
-                                        </Text>
-                                        <Text style={styles.dayName}>
-                                            {getDayName(day)}
-                                        </Text>
-                                    </View>
-                                );
-                            })}
-                        </View>
+                        {renderTableHeaderRow(
+                            daysInMonth,
+                            dayColumnWidth,
+                            getCellBgColor,
+                            styles,
+                        )}
 
                         {pageEmployees.map((employee) => (
                             <View key={employee.id} style={styles.dataRow}>
@@ -372,42 +318,7 @@ export function PDFTemplateMinimal({ data }: PDFTemplateMinimalProps) {
                     </View>
 
                     {/* Legenda - tylko na pierwszej stronie */}
-                    {pageIndex === 0 && (
-                        <View style={styles.legend}>
-                            <View style={styles.legendItem}>
-                                <View
-                                    style={[
-                                        styles.legendDot,
-                                        { backgroundColor: COLORS.bgHoliday },
-                                    ]}
-                                />
-                                <Text style={styles.legendText}>Święto</Text>
-                            </View>
-                            <View style={styles.legendItem}>
-                                <View
-                                    style={[
-                                        styles.legendDot,
-                                        { backgroundColor: COLORS.bgWeekend },
-                                    ]}
-                                />
-                                <Text style={styles.legendText}>Zamknięte</Text>
-                            </View>
-                            <View style={styles.legendItem}>
-                                <View
-                                    style={[
-                                        styles.legendDot,
-                                        {
-                                            backgroundColor:
-                                                COLORS.bgTradingSunday,
-                                        },
-                                    ]}
-                                />
-                                <Text style={styles.legendText}>
-                                    Niedziela handlowa
-                                </Text>
-                            </View>
-                        </View>
-                    )}
+                    {pageIndex === 0 && renderLegend(styles, COLORS)}
 
                     {/* Stopka */}
                     <View style={styles.footer}>

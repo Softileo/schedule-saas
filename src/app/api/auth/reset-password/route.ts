@@ -3,6 +3,11 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { withRateLimit, RATE_LIMITS } from "@/lib/utils/rate-limit";
 import { logger } from "@/lib/utils/logger";
 import { z } from "zod";
+import {
+    verifyCode,
+    deleteVerificationCode,
+    findUserByEmail,
+} from "@/lib/api/auth-helpers";
 
 // Schema dla weryfikacji kodu + nowe hasło
 const resetPasswordWithCodeSchema = z
@@ -37,72 +42,46 @@ async function handler(request: Request) {
                         validation.error.issues[0]?.message ||
                         "Nieprawidłowe dane",
                 },
-                { status: 400 }
+                { status: 400 },
             );
         }
 
         const { email, code, password } = validation.data;
-        const supabase = await createServiceClient();
 
         // Sprawdź kod weryfikacyjny
-        const { data: verificationCode } = await supabase
-            .from("verification_codes")
-            .select("*")
-            .eq("email", email)
-            .eq("code", code)
-            .eq("type", "password_reset")
-            .single();
-
-        if (!verificationCode) {
-            return NextResponse.json(
-                { error: "Nieprawidłowy kod resetujący" },
-                { status: 400 }
-            );
-        }
-
-        // Sprawdź czy kod nie wygasł
-        if (new Date(verificationCode.expires_at) < new Date()) {
-            await supabase
-                .from("verification_codes")
-                .delete()
-                .eq("id", verificationCode.id);
-
-            return NextResponse.json(
-                { error: "Kod resetujący wygasł. Poproś o nowy kod." },
-                { status: 400 }
-            );
+        const verificationResult = await verifyCode(
+            email,
+            code,
+            "password_reset",
+        );
+        if (verificationResult instanceof NextResponse) {
+            return verificationResult;
         }
 
         // Pobierz użytkownika po email
-        const { data: users } = await supabase.auth.admin.listUsers();
-        const user = users.users.find((u) => u.email === email);
-
-        if (!user) {
-            return NextResponse.json(
-                { error: "Nie znaleziono użytkownika" },
-                { status: 400 }
-            );
+        const userResult = await findUserByEmail(email);
+        if (userResult instanceof NextResponse) {
+            return userResult;
         }
+
+        const supabase = await createServiceClient();
 
         // Zaktualizuj hasło użytkownika
         const { error: updateError } = await supabase.auth.admin.updateUserById(
-            user.id,
-            { password }
+            userResult.id,
+            { password },
         );
 
         if (updateError) {
             logger.error("Update password error:", updateError);
             return NextResponse.json(
                 { error: "Nie udało się zaktualizować hasła" },
-                { status: 500 }
+                { status: 500 },
             );
         }
 
         // Usuń wykorzystany kod
-        await supabase
-            .from("verification_codes")
-            .delete()
-            .eq("id", verificationCode.id);
+        await deleteVerificationCode(verificationResult.id);
 
         logger.info(`Password reset successful for: ${email}`);
 
@@ -114,7 +93,7 @@ async function handler(request: Request) {
         logger.error("Reset password error:", error);
         return NextResponse.json(
             { error: "Wystąpił błąd podczas zmiany hasła" },
-            { status: 500 }
+            { status: 500 },
         );
     }
 }
@@ -125,5 +104,5 @@ export const POST = withRateLimit(
         limit: RATE_LIMITS.passwordReset || 5,
         errorMessage: "Zbyt wiele prób zmiany hasła. Spróbuj ponownie później.",
     },
-    handler
+    handler,
 );

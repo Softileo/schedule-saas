@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { parseISO } from "date-fns";
 import {
     SEOPageLayout,
     UniversalHero,
@@ -8,6 +9,7 @@ import {
     CTABanner,
     YearCalendarGrid,
 } from "@/components/features/seo";
+import { CalendarLegend } from "@/components/common/marketing/calendar-legend";
 import { Breadcrumbs } from "@/components/features/seo/breadcrumbs";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,11 +26,7 @@ import {
     TrendingUp,
     Info,
 } from "lucide-react";
-import { fetchHolidays } from "@/lib/api/holidays";
-import { calculateWorkingHours } from "@/lib/core/schedule/work-hours";
-import type { PublicHoliday } from "@/types";
-import { MONTH_NAMES } from "@/lib/utils/date-helpers";
-import { isSaturday, parseISO, getDaysInMonth } from "date-fns";
+import { useWorkCalendarData } from "@/lib/hooks/use-work-calendar-data";
 
 const YEAR = 2026;
 
@@ -129,99 +127,25 @@ const LONG_WEEKENDS: LongWeekend[] = [
     },
 ];
 
-// Typ dla danych miesięcznych
-interface MonthData {
-    month: number;
-    name: string;
-    workingDays: number;
-    hours: number;
-    holidays: PublicHoliday[];
-    freeDays: number;
-}
-
 export default function KalendarzDniRoboczychPage() {
-    const [workData, setWorkData] = useState<MonthData[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [holidays, setHolidays] = useState<PublicHoliday[]>([]);
-
-    // Pobierz święta i oblicz dane dla każdego miesiąca
-    useEffect(() => {
-        async function loadData() {
-            setIsLoading(true);
-            try {
-                const yearHolidays = await fetchHolidays(YEAR);
-                setHolidays(yearHolidays);
-
-                const monthsData: MonthData[] = [];
-
-                for (let month = 1; month <= 12; month++) {
-                    const result = calculateWorkingHours(
-                        YEAR,
-                        month,
-                        yearHolidays,
-                        8
-                    );
-
-                    // Sprawdź czy jakieś święto w tym miesiącu wypada w sobotę
-                    const saturdayHolidaysCount = result.holidays.filter(
-                        (holiday) => {
-                            const holidayDate = parseISO(holiday.date);
-                            return isSaturday(holidayDate);
-                        }
-                    ).length;
-
-                    // Odejmij dni robocze za święta w soboty (dzień wolny rekompensujący)
-                    const adjustedWorkingDays =
-                        result.totalWorkingDays - saturdayHolidaysCount;
-                    const adjustedHours = adjustedWorkingDays * 8;
-
-                    // Oblicz dni wolne (wszystkie dni miesiąca - dni robocze)
-                    const daysInMonth = getDaysInMonth(
-                        new Date(YEAR, month - 1)
-                    );
-                    const freeDays = daysInMonth - adjustedWorkingDays;
-
-                    monthsData.push({
-                        month,
-                        name: MONTH_NAMES[month - 1],
-                        workingDays: adjustedWorkingDays,
-                        hours: adjustedHours,
-                        holidays: result.holidays,
-                        freeDays,
-                    });
-                }
-
-                setWorkData(monthsData);
-            } catch (error) {
-                console.error("Error loading work data:", error);
-            } finally {
-                setIsLoading(false);
-            }
-        }
-
-        loadData();
-    }, []);
-
-    // Oblicz całkowite dane
-    const totalWorkingDays = workData.reduce(
-        (sum, m) => sum + m.workingDays,
-        0
-    );
-    const totalHours = workData.reduce((sum, m) => sum + m.hours, 0);
-    const totalHolidays = workData.reduce(
-        (sum, m) => sum + m.holidays.length,
-        0
-    );
-    const totalFreeDays = workData.reduce((sum, m) => sum + m.freeDays, 0);
+    const {
+        workData,
+        holidays,
+        isLoading,
+        totalWorkingDays,
+        totalHours,
+        totalHolidays,
+        totalFreeDays,
+    } = useWorkCalendarData(YEAR, 8);
 
     // Oblicz łączne dni urlopu potrzebne dla wszystkich długich weekendów
     const totalVacationDaysNeeded = LONG_WEEKENDS.reduce(
         (sum, w) => sum + w.vacationDays,
-        0
+        0,
     );
     const totalLongWeekendDays = LONG_WEEKENDS.reduce(
         (sum, w) => sum + w.totalDays,
-        0
+        0,
     );
 
     // Funkcja do oznaczania dni w kalendarzu
@@ -242,7 +166,7 @@ export default function KalendarzDniRoboczychPage() {
                 if (holidayMonth === month) {
                     // Sprawdź czy to święto już nie jest oznaczone
                     const alreadyMarked = markedDates.find(
-                        (d) => d.date === date
+                        (d) => d.date === date,
                     );
                     if (!alreadyMarked) {
                         markedDates.push({
@@ -640,7 +564,7 @@ export default function KalendarzDniRoboczychPage() {
                                 holidays.filter(
                                     (h) =>
                                         new Date(h.date).getDay() !== 0 &&
-                                        new Date(h.date).getDay() !== 6
+                                        new Date(h.date).getDay() !== 6,
                                 ).length
                             }{" "}
                             w dni robocze
@@ -651,12 +575,12 @@ export default function KalendarzDniRoboczychPage() {
                                 const date = new Date(holiday.date);
                                 const dayOfWeek = date.toLocaleDateString(
                                     "pl-PL",
-                                    { weekday: "long" }
+                                    { weekday: "long" },
                                 );
                                 const day = date.getDate();
                                 const monthShort = date.toLocaleDateString(
                                     "pl-PL",
-                                    { month: "short" }
+                                    { month: "short" },
                                 );
                                 const isWeekend =
                                     date.getDay() === 0 || date.getDay() === 6;
@@ -731,8 +655,8 @@ export default function KalendarzDniRoboczychPage() {
                                             holidays.filter(
                                                 (h) =>
                                                     new Date(
-                                                        h.date
-                                                    ).getDay() === 6
+                                                        h.date,
+                                                    ).getDay() === 6,
                                             ).length
                                         }{" "}
                                         świąt w 2026 roku.
@@ -771,7 +695,11 @@ export default function KalendarzDniRoboczychPage() {
                                     className="bg-white/10 text-white hover:bg-white/20 border-white/20"
                                     asChild
                                 >
-                                    <a href="/api/calendar/trading-sundays/2026" target="_blank" rel="noopener noreferrer">
+                                    <a
+                                        href="/api/calendar/trading-sundays/2026"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
                                         <Download className="w-4 h-4 mr-2" />
                                         Eksport ICS
                                     </a>

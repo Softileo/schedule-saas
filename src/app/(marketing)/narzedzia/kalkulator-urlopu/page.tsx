@@ -13,6 +13,7 @@ import {
     GraduationCap,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FaqSection } from "@/components/common/marketing/faq-section";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -29,6 +30,9 @@ import {
     SchemaScript,
     Breadcrumbs,
     CTABanner,
+    WarningsPanel,
+    InfoBox,
+    EmptyStatePanel,
 } from "@/components/features/seo";
 import { generateFAQSchema, generateBreadcrumbSchema } from "@/lib/seo/schemas";
 
@@ -161,25 +165,25 @@ export default function VacationCalculatorPage() {
 
         if (partTimeRatio < 1) {
             warnings.push(
-                `Urlop przeliczony proporcjonalnie do ${ptNum}/${ptDen} etatu.`
+                `Urlop przeliczony proporcjonalnie do ${ptNum}/${ptDen} etatu.`,
             );
         }
 
         if (totalWorkYears >= 9 && totalWorkYears < 10) {
             warnings.push(
                 `Za ${Math.ceil(
-                    10 - totalWorkYears
-                )} rok przysługuje 26 dni urlopu (zamiast 20).`
+                    10 - totalWorkYears,
+                )} rok przysługuje 26 dni urlopu (zamiast 20).`,
             );
         }
 
         // Explanation
         let explanation = `Staż pracy: ${totalActualYears.toFixed(
-            1
+            1,
         )} lat rzeczywistych`;
         if (eduYears > 0) {
             explanation += ` + ${eduYears} lat za wykształcenie = ${totalWorkYears.toFixed(
-                1
+                1,
             )} lat łącznie`;
         }
 
@@ -314,7 +318,7 @@ export default function VacationCalculatorPage() {
                                                     }{" "}
                                                     lat)
                                                 </SelectItem>
-                                            )
+                                            ),
                                         )}
                                     </SelectContent>
                                 </Select>
@@ -347,7 +351,7 @@ export default function VacationCalculatorPage() {
                                         value={partTimeDenominator}
                                         onChange={(e) =>
                                             setPartTimeDenominator(
-                                                e.target.value
+                                                e.target.value,
                                             )
                                         }
                                         min={1}
@@ -368,7 +372,7 @@ export default function VacationCalculatorPage() {
                                         checked={isProportional}
                                         onCheckedChange={(checked) =>
                                             setIsProportional(
-                                                checked as boolean
+                                                checked as boolean,
                                             )
                                         }
                                     />
@@ -387,7 +391,7 @@ export default function VacationCalculatorPage() {
                                             value={employmentMonths}
                                             onChange={(e) =>
                                                 setEmploymentMonths(
-                                                    e.target.value
+                                                    e.target.value,
                                                 )
                                             }
                                             min={1}
@@ -510,28 +514,12 @@ export default function VacationCalculatorPage() {
                                         </div>
 
                                         {/* Warnings */}
-                                        {result.warnings.length > 0 && (
-                                            <div className="mt-4 space-y-2">
-                                                {result.warnings.map(
-                                                    (warning, index) => (
-                                                        <div
-                                                            key={index}
-                                                            className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm"
-                                                        >
-                                                            <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                                                            <span className="text-amber-800">
-                                                                {warning}
-                                                            </span>
-                                                        </div>
-                                                    )
-                                                )}
-                                            </div>
-                                        )}
+                                        <WarningsPanel
+                                            warnings={result.warnings}
+                                        />
                                     </div>
                                 ) : (
-                                    <p className="text-center text-muted-foreground py-8">
-                                        Wprowadź dane, aby zobaczyć wynik
-                                    </p>
+                                    <EmptyStatePanel />
                                 )}
                             </CardContent>
                         </Card>
@@ -735,25 +723,7 @@ export default function VacationCalculatorPage() {
                 </div>
 
                 {/* FAQ Section */}
-                <div className="max-w-4xl mx-auto mb-16">
-                    <h2 className="text-2xl font-bold mb-6 text-center">
-                        Najczęściej zadawane pytania
-                    </h2>
-                    <div className="space-y-4">
-                        {faqItems.map((item, index) => (
-                            <Card key={index}>
-                                <CardContent className="pt-6">
-                                    <h3 className="font-semibold mb-2">
-                                        {item.question}
-                                    </h3>
-                                    <p className="text-muted-foreground">
-                                        {item.answer}
-                                    </p>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
-                </div>
+                <FaqSection faqItems={faqItems} />
 
                 {/* Related links */}
                 <div className="max-w-4xl mx-auto mb-16">

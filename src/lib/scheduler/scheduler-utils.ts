@@ -9,6 +9,7 @@ import type { EmployeeWithData, GeneratedShift, ShiftTimeType } from "./types";
 import { DAY_KEYS } from "@/lib/constants/days";
 import { getRequiredHours } from "@/lib/core/schedule/work-hours";
 import { getEmploymentTypeHoursPerDay } from "@/lib/constants/employment";
+import { countAbsenceDaysInMonth } from "./absence-utils";
 import {
     timeToMinutes,
     parseTime,
@@ -348,52 +349,20 @@ export function getAdjustedRequiredHours(
         emp.custom_hours ?? undefined,
     );
 
-    // Policz dni robocze nieobecności
-    let absenceDays = 0;
+    // Odfiltruj tylko płatne nieobecności
+    const paidAbsences = emp.absences.filter(
+        (absence) => absence.is_paid === true,
+    );
 
-    for (const absence of emp.absences) {
-        // Tylko płatne nieobecności pomniejszają wymagane godziny
-        if (absence.is_paid === false) continue;
-
-        // Sprawdź czy nieobecność nachodzi na ten miesiąc
-        if (absence.start_date > monthEnd || absence.end_date < monthStart) {
-            continue;
-        }
-
-        // Ogranicz zakres nieobecności do bieżącego miesiąca
-        const absStart =
-            absence.start_date < monthStart ? monthStart : absence.start_date;
-        const absEnd =
-            absence.end_date > monthEnd ? monthEnd : absence.end_date;
-
-        // Policz tylko dni robocze (nie święta, nie niedziele niehandlowe)
-        const startDate = new Date(absStart);
-        const endDate = new Date(absEnd);
-
-        for (
-            let d = new Date(startDate);
-            d <= endDate;
-            d.setDate(d.getDate() + 1)
-        ) {
-            const dateStr = `${d.getFullYear()}-${String(
-                d.getMonth() + 1,
-            ).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-            // Pomiń święta
-            if (holidayDates.has(dateStr)) continue;
-
-            // Pomiń niedziele niehandlowe
-            if (d.getDay() === 0 && !tradingSundaysSet.has(dateStr)) continue;
-
-            // Pomiń soboty jeśli sklep zamknięty
-            const openingHours = settings.opening_hours;
-            if (d.getDay() === 6 && openingHours?.saturday?.enabled === false) {
-                continue;
-            }
-
-            absenceDays += 1;
-        }
-    }
+    // Policz dni nieobecności w tym miesiącu (pomijając święta i niedziele niehandlowe)
+    const absenceDays = countAbsenceDaysInMonth({
+        absences: paidAbsences,
+        monthStart,
+        monthEnd,
+        holidayDates,
+        tradingSundaysSet,
+        settings,
+    });
 
     // Pomniejsz wymagane godziny o dni nieobecności
     if (absenceDays > 0) {

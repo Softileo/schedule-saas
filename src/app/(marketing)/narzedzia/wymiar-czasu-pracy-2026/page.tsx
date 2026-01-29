@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
     SEOPageLayout,
     UniversalHero,
@@ -8,6 +8,7 @@ import {
     CTABanner,
     YearCalendarGrid,
 } from "@/components/features/seo";
+import { CalendarLegend } from "@/components/common/marketing/calendar-legend";
 import { Breadcrumbs } from "@/components/features/seo/breadcrumbs";
 import { Card } from "@/components/ui/card";
 import {
@@ -18,11 +19,10 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Calendar, Loader2 } from "lucide-react";
-import { fetchHolidays } from "@/lib/api/holidays";
-import { calculateWorkingHours } from "@/lib/core/schedule/work-hours";
-import type { PublicHoliday } from "@/types";
-import { MONTH_NAMES } from "@/lib/utils/date-helpers";
-import { isSaturday, parseISO, getDaysInMonth } from "date-fns";
+import {
+    useWorkCalendarData,
+    type MonthData,
+} from "@/lib/hooks/use-work-calendar-data";
 
 // FAQ dla kalkulatora
 const faqs = [
@@ -44,16 +44,6 @@ const faqs = [
     },
 ];
 
-// Typ dla danych miesięcznych
-interface MonthData {
-    month: number;
-    name: string;
-    workingDays: number;
-    hours: number;
-    holidays: PublicHoliday[];
-    freeDays: number; // weekendy + święta
-}
-
 const EMPLOYMENT_TYPES = [
     { value: "1", label: "Pełny etat", multiplier: 1 },
     { value: "0.75", label: "3/4 etatu", multiplier: 0.75 },
@@ -65,80 +55,19 @@ const YEAR = 2026;
 
 export default function WymiarCzasuPracyPage() {
     const [employmentType, setEmploymentType] = useState<string>("1");
-    const [workData, setWorkData] = useState<MonthData[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
 
     const multiplier =
         EMPLOYMENT_TYPES.find((e) => e.value === employmentType)?.multiplier ||
         1;
 
-    // Pobierz święta i oblicz dane dla każdego miesiąca
-    useEffect(() => {
-        async function loadData() {
-            setIsLoading(true);
-            try {
-                const yearHolidays = await fetchHolidays(YEAR);
-
-                const monthsData: MonthData[] = [];
-
-                for (let month = 1; month <= 12; month++) {
-                    const result = calculateWorkingHours(
-                        YEAR,
-                        month,
-                        yearHolidays,
-                        8
-                    );
-
-                    // Sprawdź czy jakieś święto w tym miesiącu wypada w sobotę
-                    const saturdayHolidaysCount = result.holidays.filter(
-                        (holiday) => {
-                            const holidayDate = parseISO(holiday.date);
-                            return isSaturday(holidayDate);
-                        }
-                    ).length;
-
-                    // Odejmij dni robocze za święta w soboty (dzień wolny rekompensujący)
-                    const adjustedWorkingDays =
-                        result.totalWorkingDays - saturdayHolidaysCount;
-                    const adjustedHours = adjustedWorkingDays * 8;
-
-                    // Oblicz dni wolne (wszystkie dni miesiąca - dni robocze)
-                    const daysInMonth = getDaysInMonth(
-                        new Date(YEAR, month - 1)
-                    );
-                    const freeDays = daysInMonth - adjustedWorkingDays;
-
-                    monthsData.push({
-                        month,
-                        name: MONTH_NAMES[month - 1],
-                        workingDays: adjustedWorkingDays,
-                        hours: adjustedHours,
-                        holidays: result.holidays,
-                        freeDays,
-                    });
-                }
-
-                setWorkData(monthsData);
-            } catch (error) {
-                console.error("Error loading work data:", error);
-            } finally {
-                setIsLoading(false);
-            }
-        }
-
-        loadData();
-    }, []);
-
-    // Oblicz całkowite dane
-    const totalWorkingDays = workData.reduce(
-        (sum, m) => sum + m.workingDays,
-        0
-    );
-    const totalHours = workData.reduce((sum, m) => sum + m.hours, 0);
-    const totalHolidays = workData.reduce(
-        (sum, m) => sum + m.holidays.length,
-        0
-    );
+    const {
+        workData,
+        isLoading,
+        totalWorkingDays,
+        totalHours,
+        totalHolidays,
+        totalFreeDays,
+    } = useWorkCalendarData(YEAR, 8);
 
     // Funkcja do oznaczania dni w kalendarzu
     const getMarkedDates = (month: number) => {
@@ -237,18 +166,7 @@ export default function WymiarCzasuPracyPage() {
                         <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">
                             Kalendarz {YEAR}
                         </h2>
-                        <p className="text-gray-600 text-center mb-8 flex items-center justify-center gap-4 flex-wrap">
-                            <span className="inline-flex items-center gap-2">
-                                <span className="w-4 h-4 rounded bg-red-100 border border-red-200"></span>
-                                <span className="text-sm">Święto</span>
-                            </span>
-                            <span className="inline-flex items-center gap-2">
-                                <span className="w-4 h-4 rounded text-red-400 text-xs flex items-center justify-center font-medium">
-                                    N
-                                </span>
-                                <span className="text-sm">Niedziela</span>
-                            </span>
-                        </p>
+                        <CalendarLegend />
 
                         <YearCalendarGrid
                             year={YEAR}
@@ -331,7 +249,8 @@ export default function WymiarCzasuPracyPage() {
                                                 </td>
                                                 <td className="px-4 py-3 text-center font-semibold text-blue-600">
                                                     {Math.round(
-                                                        month.hours * multiplier
+                                                        month.hours *
+                                                            multiplier,
                                                     )}
                                                     h
                                                 </td>
@@ -355,12 +274,12 @@ export default function WymiarCzasuPracyPage() {
                                                 {workData.reduce(
                                                     (sum, m) =>
                                                         sum + m.freeDays,
-                                                    0
+                                                    0,
                                                 )}
                                             </td>
                                             <td className="px-4 py-3 text-center font-bold text-blue-600">
                                                 {Math.round(
-                                                    totalHours * multiplier
+                                                    totalHours * multiplier,
                                                 )}
                                                 h
                                             </td>

@@ -1,6 +1,7 @@
 import { PublicHoliday } from "@/types";
 import { logger } from "@/lib/utils/logger";
 import { formatDateToISO } from "@/lib/utils/date-helpers";
+import { calculateEasterDate } from "@/lib/utils/easter-calculator";
 
 const NAGER_API_BASE = "https://date.nager.at/api/v3";
 const DEFAULT_COUNTRY = "PL";
@@ -57,25 +58,7 @@ export function calculateTradingSundays(year: number): string[] {
     });
 
     // 2. MODUŁ RUCHOMY: Niedziela przed Wielkanocą (Niedziela Palmowa)
-    const getEasterDate = (y: number): Date => {
-        const a = y % 19,
-            b = Math.floor(y / 100),
-            c = y % 100;
-        const d = Math.floor(b / 4),
-            e = b % 4,
-            f = Math.floor((b + 8) / 25);
-        const g = Math.floor((b - f + 1) / 3),
-            h = (19 * a + b - d - g + 15) % 30;
-        const i = Math.floor(c / 4),
-            k = c % 4,
-            l = (32 + 2 * e + 2 * i - h - k) % 7;
-        const m = Math.floor((a + 11 * h + 22 * l) / 451);
-        const month = Math.floor((h + l - 7 * m + 114) / 31) - 1;
-        const day = ((h + l - 7 * m + 114) % 31) + 1;
-        return new Date(y, month, day);
-    };
-
-    const easter = getEasterDate(year);
+    const easter = calculateEasterDate(year);
     const sundayBeforeEaster = new Date(easter);
     sundayBeforeEaster.setDate(easter.getDate() - 7);
     tradingSundays.add(formatDate(sundayBeforeEaster));
@@ -124,24 +107,7 @@ export function getTradingSundays(year: number): string[] {
     );
 
     // 2. Wielkanoc (Niedziela Palmowa)
-    const getEaster = (y: number) => {
-        const a = y % 19,
-            b = Math.floor(y / 100),
-            c = y % 100;
-        const d = Math.floor(b / 4),
-            e = b % 4,
-            f = Math.floor((b + 8) / 25);
-        const g = Math.floor((b - f + 1) / 3),
-            h = (19 * a + b - d - g + 15) % 30;
-        const i = Math.floor(c / 4),
-            k = c % 4,
-            l = (32 + 2 * e + 2 * i - h - k) % 7;
-        const m = Math.floor((a + 11 * h + 22 * l) / 451);
-        const month = Math.floor((h + l - 7 * m + 114) / 31) - 1;
-        const day = ((h + l - 7 * m + 114) % 31) + 1;
-        return new Date(y, month, day);
-    };
-    const palmSunday = getEaster(year);
+    const palmSunday = calculateEasterDate(year);
     palmSunday.setDate(palmSunday.getDate() - 7);
     tradingSundays.add(toISODate(palmSunday));
 

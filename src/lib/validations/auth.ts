@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { emailField, passwordField } from "./shared";
+import { passwordMatchRefine } from "./helpers";
 
 export const loginSchema = z.object({
     email: emailField,
     password: passwordField,
 });
 
-export const registerSchema = z
-    .object({
+export const registerSchema = passwordMatchRefine(
+    z.object({
         fullName: z
             .string()
             .min(1, "Imię i nazwisko jest wymagane")
@@ -15,11 +16,8 @@ export const registerSchema = z
         email: emailField,
         password: passwordField,
         confirmPassword: z.string().min(1, "Potwierdzenie hasła jest wymagane"),
-    })
-    .refine((data) => data.password === data.confirmPassword, {
-        message: "Hasła nie są identyczne",
-        path: ["confirmPassword"],
-    });
+    }),
+);
 
 // Schemat dla API (bez confirmPassword)
 export const registerApiSchema = z.object({
@@ -45,15 +43,12 @@ export const resetPasswordSchema = z.object({
     email: emailField,
 });
 
-export const newPasswordSchema = z
-    .object({
+export const newPasswordSchema = passwordMatchRefine(
+    z.object({
         password: passwordField,
         confirmPassword: z.string().min(1, "Potwierdzenie hasła jest wymagane"),
-    })
-    .refine((data) => data.password === data.confirmPassword, {
-        message: "Hasła nie są identyczne",
-        path: ["confirmPassword"],
-    });
+    }),
+);
 
 export type LoginFormData = z.infer<typeof loginSchema>;
 export type RegisterFormData = z.infer<typeof registerSchema>;

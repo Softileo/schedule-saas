@@ -3,9 +3,16 @@ import {
     getTemplateHours,
     getShiftHours,
     getShiftTimeType,
-    daysDiff,
 } from "../scheduler-utils";
 import type { ShiftTemplate } from "@/types";
+import {
+    addShiftToState,
+    addShiftToStaffing,
+    removeShiftFromStaffing,
+    updateShiftCounters,
+    createShiftFromTemplate,
+    createCustomShift,
+} from "./shift-state-helpers";
 
 export class ShiftManager {
     constructor(
@@ -30,64 +37,30 @@ export class ShiftManager {
 
         const hours = getTemplateHours(template);
         const timeType = getShiftTimeType(template.start_time.substring(0, 5));
+        const shift = createShiftFromTemplate(empId, date, template);
 
-        const shift: GeneratedShift = {
-            employee_id: empId,
+        // Aktualizuj stan pracownika
+        addShiftToState(
+            state,
+            shift,
+            hours,
             date,
-            start_time: template.start_time.substring(0, 5),
-            end_time: template.end_time.substring(0, 5),
-            break_minutes: template.break_minutes ?? 0,
-            template_id: template.id,
-        };
-
-        state.shifts.push(shift);
-        state.currentHours += hours;
-        state.occupiedDates.add(date);
-
-        // Aktualizuj liczniki
-        if (this.weekendDaysSet.has(date)) state.weekendShiftCount++;
-        if (this.saturdaysSet.has(date)) state.saturdayShiftCount++;
-        if (this.tradingSundaysSet.has(date)) state.sundayShiftCount++;
-
-        if (timeType === "morning") state.morningShiftCount++;
-        else if (timeType === "afternoon") state.afternoonShiftCount++;
-        else state.eveningShiftCount++;
-
-        // Aktualizuj ciągłość
-        if (state.lastShiftTemplate?.id === template.id) {
-            state.consecutiveShiftDays++;
-        } else {
-            state.consecutiveShiftDays = 1;
-            state.lastShiftType = timeType;
-            state.lastShiftTemplate = template;
-        }
-
-        // Aktualizuj dni z rzędu
-        if (state.lastShiftDate) {
-            const diff = daysDiff(state.lastShiftDate, date);
-            if (diff === 1) {
-                state.consecutiveWorkDays++;
-            } else if (diff > 1) {
-                state.consecutiveWorkDays = 1;
-            }
-        } else {
-            state.consecutiveWorkDays = 1;
-        }
-
-        state.lastShiftDate = date;
-        state.lastShiftEndTime = template.end_time.substring(0, 5);
+            template.end_time.substring(0, 5),
+            timeType,
+            template,
+            this.weekendDaysSet,
+            this.saturdaysSet,
+            this.tradingSundaysSet,
+        );
 
         // Aktualizuj struktury obsady
-        this.dailyStaffing.get(date)?.push(shift);
-        const dayTemplateMap = this.dailyTemplateStaffing.get(date);
-        if (dayTemplateMap) {
-            let templateStaff = dayTemplateMap.get(template.id);
-            if (!templateStaff) {
-                templateStaff = [];
-                dayTemplateMap.set(template.id, templateStaff);
-            }
-            templateStaff.push(shift);
-        }
+        addShiftToStaffing(
+            shift,
+            this.dailyStaffing,
+            this.dailyTemplateStaffing,
+            date,
+            template.id,
+        );
 
         return shift;
     }
@@ -114,41 +87,23 @@ export class ShiftManager {
         state.currentHours -= hours;
         state.occupiedDates.delete(shift.date);
 
-        if (this.weekendDaysSet.has(shift.date)) state.weekendShiftCount--;
-        if (this.saturdaysSet.has(shift.date)) state.saturdayShiftCount--;
-        if (this.tradingSundaysSet.has(shift.date)) state.sundayShiftCount--;
-        if (timeType === "morning") state.morningShiftCount--;
-        else if (timeType === "afternoon") state.afternoonShiftCount--;
-        else state.eveningShiftCount--;
+        updateShiftCounters(
+            state,
+            shift.date,
+            timeType,
+            this.weekendDaysSet,
+            this.saturdaysSet,
+            this.tradingSundaysSet,
+            false,
+        );
 
-        // Usuń z dailyStaffing
-        const dayStaff = this.dailyStaffing.get(shift.date);
-        if (dayStaff) {
-            const idx = dayStaff.findIndex(
-                (s) =>
-                    s.employee_id === empId &&
-                    s.start_time === shift.start_time &&
-                    s.end_time === shift.end_time,
-            );
-            if (idx !== -1) dayStaff.splice(idx, 1);
-        }
-
-        // Usuń z dailyTemplateStaffing
-        if (shift.template_id) {
-            const dayTemplateMap = this.dailyTemplateStaffing.get(shift.date);
-            if (dayTemplateMap) {
-                const templateStaff = dayTemplateMap.get(shift.template_id);
-                if (templateStaff) {
-                    const idx = templateStaff.findIndex(
-                        (s) =>
-                            s.employee_id === empId &&
-                            s.start_time === shift.start_time &&
-                            s.end_time === shift.end_time,
-                    );
-                    if (idx !== -1) templateStaff.splice(idx, 1);
-                }
-            }
-        }
+        // Usuń ze struktur obsady
+        removeShiftFromStaffing(
+            shift,
+            empId,
+            this.dailyStaffing,
+            this.dailyTemplateStaffing,
+        );
     }
 
     addCustomShift(
@@ -163,51 +118,35 @@ export class ShiftManager {
         if (!state) return null;
 
         const timeType = getShiftTimeType(startTime);
-
-        const shift: GeneratedShift = {
-            employee_id: empId,
+        const shift = createCustomShift(
+            empId,
             date,
-            start_time: startTime,
-            end_time: endTime,
-            break_minutes: breakMinutes,
-            // Custom shift nie ma template_id
-        };
+            startTime,
+            endTime,
+            breakMinutes,
+        );
 
-        state.shifts.push(shift);
-        state.currentHours += hours;
-        state.occupiedDates.add(date);
+        // Aktualizuj stan pracownika
+        addShiftToState(
+            state,
+            shift,
+            hours,
+            date,
+            endTime.substring(0, 5),
+            timeType,
+            null, // Custom shift nie ma szablonu
+            this.weekendDaysSet,
+            this.saturdaysSet,
+            this.tradingSundaysSet,
+        );
 
-        // Aktualizuj liczniki
-        if (this.weekendDaysSet.has(date)) state.weekendShiftCount++;
-        if (this.saturdaysSet.has(date)) state.saturdayShiftCount++;
-        if (this.tradingSundaysSet.has(date)) state.sundayShiftCount++;
-        if (timeType === "morning") state.morningShiftCount++;
-        else if (timeType === "afternoon") state.afternoonShiftCount++;
-        else state.eveningShiftCount++;
-
-        // Aktualizuj ciągłość
-        state.consecutiveShiftDays = 1;
-        state.lastShiftType = timeType;
-        state.lastShiftTemplate = null;
-
-        // Aktualizuj dni z rzędu
-        if (state.lastShiftDate) {
-            const diff = daysDiff(state.lastShiftDate, date);
-            if (diff === 1) {
-                state.consecutiveWorkDays++;
-            } else if (diff > 1) {
-                state.consecutiveWorkDays = 1;
-            }
-        } else {
-            state.consecutiveWorkDays = 1;
-        }
-
-        state.lastShiftDate = date;
-        state.lastShiftEndTime = endTime.substring(0, 5);
-
-        // Aktualizuj struktury obsady
-        this.dailyStaffing.get(date)?.push(shift);
-        // Nie aktualizujemy dailyTemplateStaffing dla custom shiftów (brak ID)
+        // Aktualizuj struktury obsady (bez template_id dla custom shifts)
+        addShiftToStaffing(
+            shift,
+            this.dailyStaffing,
+            this.dailyTemplateStaffing,
+            date,
+        );
 
         return shift;
     }

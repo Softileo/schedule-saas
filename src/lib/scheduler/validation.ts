@@ -138,16 +138,15 @@ export function checkHardConstraintsForShift(
 }
 
 /**
- * Sprawdza 11h odpoczynku dobowego (Art. 132 KP)
+ * Helper function to check rest hours between shifts
+ * @returns false if rest violation detected, true otherwise
  */
-export function checkDailyRest(
-    shifts: GeneratedShift[],
+function checkRestHoursBetweenShifts(
+    shifts: { date: string; start_time: string; end_time: string }[],
     newDate: string,
-    template: ShiftTemplate,
+    newStart: string,
+    newEnd: string,
 ): boolean {
-    const newStart = template.start_time.substring(0, 5);
-    const newEnd = template.end_time.substring(0, 5);
-
     for (const shift of shifts) {
         const shiftDate = shift.date;
         const diffDays = daysDiff(shiftDate, newDate);
@@ -183,6 +182,20 @@ export function checkDailyRest(
     }
 
     return true;
+}
+
+/**
+ * Sprawdza 11h odpoczynku dobowego (Art. 132 KP)
+ */
+export function checkDailyRest(
+    shifts: GeneratedShift[],
+    newDate: string,
+    template: ShiftTemplate,
+): boolean {
+    const newStart = template.start_time.substring(0, 5);
+    const newEnd = template.end_time.substring(0, 5);
+
+    return checkRestHoursBetweenShifts(shifts, newDate, newStart, newEnd);
 }
 
 /**
@@ -435,41 +448,14 @@ export function checkDailyRestSimple(
     const newStart = newTemplate.start_time.substring(0, 5);
     const newEnd = newTemplate.end_time.substring(0, 5);
 
-    for (const shift of shifts) {
-        const shiftDate = shift.date;
-        const diffDays = daysDiff(shiftDate, newDate);
+    // Map to compatible format for helper
+    const mappedShifts = shifts.map((shift) => ({
+        date: shift.date,
+        start_time: shift.template.start_time,
+        end_time: shift.template.end_time,
+    }));
 
-        // Tylko sąsiednie dni są istotne
-        if (Math.abs(diffDays) !== 1) continue;
-
-        let restHours: number;
-        if (diffDays === 1) {
-            // Nowa zmiana jest NASTĘPNEGO dnia po istniejącej
-            restHours = calculateRestHours(
-                shiftDate,
-                shift.template.end_time,
-                newDate,
-                newStart,
-            );
-        } else {
-            // Nowa zmiana jest POPRZEDNIEGO dnia przed istniejącą
-            restHours = calculateRestHours(
-                newDate,
-                newEnd,
-                shiftDate,
-                shift.template.start_time,
-            );
-        }
-
-        if (
-            restHours > 0 &&
-            restHours < POLISH_LABOR_CODE.MIN_DAILY_REST_HOURS
-        ) {
-            return false;
-        }
-    }
-
-    return true;
+    return checkRestHoursBetweenShifts(mappedShifts, newDate, newStart, newEnd);
 }
 
 /**

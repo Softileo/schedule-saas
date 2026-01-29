@@ -1,24 +1,19 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import {
+    checkUserAuth,
+    verifyOrganizationAccess,
+} from "@/lib/api/auth-helpers";
 import { logger } from "@/lib/utils/logger";
 import type { EmployeePreferences, EmployeeAbsence } from "@/types";
 
 export async function GET(request: Request) {
     try {
-        const supabase = await createClient();
-
         // AUTH: Sprawdź czy użytkownik jest zalogowany
-        const {
-            data: { user },
-            error: userError,
-        } = await supabase.auth.getUser();
-
-        if (userError || !user) {
-            return NextResponse.json(
-                { error: "Brak autoryzacji" },
-                { status: 401 }
-            );
+        const authResult = await checkUserAuth();
+        if (authResult instanceof NextResponse) {
+            return authResult;
         }
+        const [user, supabase] = authResult;
 
         const { searchParams } = new URL(request.url);
         const organizationId = searchParams.get("organizationId");
@@ -28,23 +23,18 @@ export async function GET(request: Request) {
         if (!organizationId) {
             return NextResponse.json(
                 { error: "Missing organizationId" },
-                { status: 400 }
+                { status: 400 },
             );
         }
 
         // SECURITY: Sprawdź czy użytkownik ma dostęp do tej organizacji
-        const { data: membership } = await supabase
-            .from("organization_members")
-            .select("organization_id")
-            .eq("user_id", user.id)
-            .eq("organization_id", organizationId)
-            .single();
-
-        if (!membership) {
-            return NextResponse.json(
-                { error: "Brak dostępu do tej organizacji" },
-                { status: 403 }
-            );
+        const accessError = await verifyOrganizationAccess(
+            supabase,
+            user.id,
+            organizationId,
+        );
+        if (accessError) {
+            return accessError;
         }
 
         // Pobierz pracowników organizacji (pełne dane)

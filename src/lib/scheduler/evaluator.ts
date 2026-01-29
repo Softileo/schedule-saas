@@ -17,6 +17,7 @@ import {
     type SchedulerInput,
     type GeneratedShift,
 } from "./types";
+import { countAbsenceDaysInMonth } from "./absence-utils";
 import {
     getShiftHours,
     getShiftTimeType,
@@ -221,68 +222,25 @@ export function evaluateSchedule(
         // Pomniejsz requiredHours o dni nieobecności (tylko dni robocze, tylko płatne)
         let absenceHours = 0;
         if (emp.absences && emp.absences.length > 0) {
-            let absenceDays = 0;
+            // Odfiltruj tylko płatne nieobecności
+            const paidAbsences = emp.absences.filter(
+                (absence) => absence.is_paid === true,
+            );
 
-            for (const absence of emp.absences) {
-                // Tylko płatne nieobecności pomniejszają wymagane godziny
-                if (absence.is_paid === false) {
-                    continue;
-                }
-
-                // Sprawdź czy nieobecność nachodzi na ten miesiąc
-                if (
-                    absence.start_date > monthEnd ||
-                    absence.end_date < monthStart
-                ) {
-                    continue;
-                }
-
-                // Ogranicz zakres nieobecności do bieżącego miesiąca
-                const absStart =
-                    absence.start_date < monthStart
-                        ? monthStart
-                        : absence.start_date;
-                const absEnd =
-                    absence.end_date > monthEnd ? monthEnd : absence.end_date;
-
-                // Policz tylko dni robocze (nie święta, nie niedziele niehandlowe)
-                const startDate = new Date(absStart);
-                const endDate = new Date(absEnd);
-
-                for (
-                    let d = new Date(startDate);
-                    d <= endDate;
-                    d.setDate(d.getDate() + 1)
-                ) {
-                    const dateStr = `${d.getFullYear()}-${String(
-                        d.getMonth() + 1,
-                    ).padStart(2, "0")}-${String(d.getDate()).padStart(
-                        2,
-                        "0",
-                    )}`;
-
-                    // Pomiń święta
-                    if (holidayDates.has(dateStr)) continue;
-
-                    // Pomiń niedziele niehandlowe
-                    if (d.getDay() === 0 && !tradingSundaysSet.has(dateStr)) {
-                        continue;
-                    }
-
-                    // Pomiń soboty jeśli zamknięte
-                    const openingHours = settings.opening_hours as
-                        | Record<string, { enabled?: boolean }>
-                        | undefined;
-                    if (
-                        d.getDay() === 6 &&
-                        openingHours?.saturday?.enabled === false
-                    ) {
-                        continue;
-                    }
-
-                    absenceDays += 1;
-                }
-            }
+            // Policz dni nieobecności w tym miesiącu (pomiń święta i niedziele niehandlowe)
+            const absenceDays = countAbsenceDaysInMonth({
+                absences: paidAbsences,
+                monthStart,
+                monthEnd,
+                holidayDates,
+                tradingSundaysSet,
+                settings: {
+                    opening_hours: settings.opening_hours as Record<
+                        string,
+                        { enabled?: boolean }
+                    > | null,
+                },
+            });
 
             if (absenceDays > 0) {
                 absenceHours = absenceDays * hoursPerDay;

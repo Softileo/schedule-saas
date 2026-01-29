@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { GoogleButton } from "./google-button";
 import { Spinner } from "@/components/ui/spinner";
 import { FormError } from "@/components/ui/form-message";
+import { EmailInput } from "@/components/common/form/email-input";
+import { PasswordInput } from "@/components/common/form/password-input";
 import {
     OAuthSeparator,
     AuthLoadingScreen,
@@ -77,7 +79,7 @@ export function RegisterForm() {
 
             // Przekieruj do weryfikacji kodu
             router.push(
-                `${ROUTES.WERYFIKACJA}?email=${encodeURIComponent(data.email)}`
+                `${ROUTES.WERYFIKACJA}?email=${encodeURIComponent(String(data.email))}`,
             );
         } catch {
             setError("Wystąpił błąd podczas rejestracji");
@@ -156,37 +158,19 @@ export function RegisterForm() {
                     )}
                 </div>
 
-                <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                        id="email"
-                        type="email"
-                        placeholder="jan@example.com"
-                        disabled={isLoading}
-                        {...register("email")}
-                    />
-                    {errors.email && (
-                        <p className="text-sm text-destructive">
-                            {errors.email.message}
-                        </p>
-                    )}
-                </div>
+                <EmailInput
+                    disabled={isLoading}
+                    error={errors.email}
+                    register={register("email")}
+                />
 
-                <div className="space-y-2">
-                    <Label htmlFor="password">Hasło</Label>
-                    <Input
-                        id="password"
-                        type="password"
-                        placeholder="••••••••"
-                        disabled={isLoading}
-                        {...register("password")}
-                    />
-                    {errors.password && (
-                        <p className="text-sm text-destructive">
-                            {errors.password.message}
-                        </p>
-                    )}
-                </div>
+                <PasswordInput
+                    id="password"
+                    label="Hasło"
+                    disabled={isLoading}
+                    error={errors.password}
+                    register={register("password")}
+                />
 
                 <div className="space-y-2">
                     <Label htmlFor="confirmPassword">Potwierdź hasło</Label>
@@ -233,8 +217,8 @@ function StepIndicator({
                     isComplete
                         ? "bg-green-100 text-green-600"
                         : isActive
-                        ? "bg-primary/10 text-primary animate-pulse"
-                        : "bg-slate-100 text-slate-400"
+                          ? "bg-primary/10 text-primary animate-pulse"
+                          : "bg-slate-100 text-slate-400",
                 )}
             >
                 {isComplete ? (
@@ -246,7 +230,9 @@ function StepIndicator({
             <span
                 className={cn(
                     "text-[10px] font-medium",
-                    isActive || isComplete ? "text-slate-700" : "text-slate-400"
+                    isActive || isComplete
+                        ? "text-slate-700"
+                        : "text-slate-400",
                 )}
             >
                 {label}

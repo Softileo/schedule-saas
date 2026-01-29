@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { ShiftTemplate, Employee } from "@/types";
 import { Button } from "@/components/ui/button";
+import { calculateShiftDuration } from "@/lib/utils/time-helpers";
 import {
     Plus,
     Trash2,
@@ -22,6 +23,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ShiftTemplateAvatar } from "@/components/features/schedule/components/shift-template-avatar";
 
 interface ShiftTemplatesListProps {
     templates: ShiftTemplate[];
@@ -70,7 +72,7 @@ export function ShiftTemplatesList(props: ShiftTemplatesListProps) {
     // Sortuj szablony od najwcześniejszej do najpóźniejszej zmiany
     const sortedTemplates = useMemo(() => {
         return [...templates].sort((a, b) =>
-            a.start_time.localeCompare(b.start_time)
+            a.start_time.localeCompare(b.start_time),
         );
     }, [templates]);
 
@@ -90,8 +92,8 @@ export function ShiftTemplatesList(props: ShiftTemplatesListProps) {
                                           sortedTemplates.length === 1
                                               ? "zmiana"
                                               : sortedTemplates.length < 5
-                                              ? "zmiany"
-                                              : "zmian"
+                                                ? "zmiany"
+                                                : "zmian"
                                       }`
                                     : "Twórz zmiany do szybkiego dodawania do grafiku"}
                             </p>
@@ -118,44 +120,17 @@ export function ShiftTemplatesList(props: ShiftTemplatesListProps) {
             ) : (
                 <div className="bg-white rounded-lg border border-slate-200 divide-y divide-slate-100">
                     {sortedTemplates.map((template) => {
-                        // Calculate shift duration
-                        const [startH, startM] = template.start_time
-                            .split(":")
-                            .map(Number);
-                        const [endH, endM] = template.end_time
-                            .split(":")
-                            .map(Number);
-                        let duration =
-                            endH * 60 + endM - (startH * 60 + startM);
-                        if (duration < 0) duration += 24 * 60;
-                        const hours = Math.floor(duration / 60);
-                        const mins = duration % 60;
+                        const { hours, mins } = calculateShiftDuration(
+                            template.start_time,
+                            template.end_time,
+                        );
 
                         return (
                             <div
                                 key={template.id}
                                 className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50 transition-colors"
                             >
-                                {/* Avatar - identyczny jak w shift-templates-manager */}
-                                <div
-                                    className="w-11 h-11 rounded-lg flex flex-col items-center justify-center border shadow-sm shrink-0"
-                                    style={{
-                                        backgroundColor: template.color
-                                            ? `${template.color}15`
-                                            : undefined,
-                                        borderColor: template.color
-                                            ? `${template.color}35`
-                                            : undefined,
-                                        color: template.color ?? undefined,
-                                    }}
-                                >
-                                    <span className="font-bold text-[11px] leading-none">
-                                        {template.start_time.substring(0, 5)}
-                                    </span>
-                                    <span className="opacity-60 text-[9px] leading-none mt-0.5">
-                                        {template.end_time.substring(0, 5)}
-                                    </span>
-                                </div>
+                                <ShiftTemplateAvatar template={template} />
 
                                 {/* Info */}
                                 <div className="min-w-0 flex-1">
@@ -243,7 +218,7 @@ export function ShiftTemplatesList(props: ShiftTemplatesListProps) {
                                                 <DropdownMenuItem
                                                     onClick={() =>
                                                         setAssignmentsTemplate(
-                                                            template
+                                                            template,
                                                         )
                                                     }
                                                     disabled={
@@ -264,7 +239,7 @@ export function ShiftTemplatesList(props: ShiftTemplatesListProps) {
                                                 <DropdownMenuItem
                                                     onClick={() =>
                                                         handleDelete(
-                                                            template.id
+                                                            template.id,
                                                         )
                                                     }
                                                     className="text-red-600 focus:text-red-600 focus:bg-red-50"

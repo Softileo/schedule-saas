@@ -6,6 +6,39 @@
  * Centralne funkcje do obliczeń czasowych.
  */
 
+export interface ShiftDuration {
+    hours: number;
+    mins: number;
+}
+
+/**
+ * Oblicza czas trwania zmiany i zwraca w formie godzin i minut.
+ * Obsługuje zmiany nocne (przez północ).
+ *
+ * @param startTime - Czas rozpoczęcia w formacie "HH:MM"
+ * @param endTime - Czas zakończenia w formacie "HH:MM"
+ * @returns Obiekt z godzinamii minutami trwania zmiany
+ *
+ * @example
+ * calculateShiftDuration("08:00", "16:00") // { hours: 8, mins: 0 }
+ * calculateShiftDuration("22:00", "06:00") // { hours: 8, mins: 0 } (zmiana nocna)
+ */
+export function calculateShiftDuration(
+    startTime: string,
+    endTime: string,
+): ShiftDuration {
+    const [startH, startM] = startTime.split(":").map(Number);
+    const [endH, endM] = endTime.split(":").map(Number);
+
+    let duration = endH * 60 + endM - (startH * 60 + startM);
+    if (duration < 0) duration += 24 * 60;
+
+    const hours = Math.floor(duration / 60);
+    const mins = duration % 60;
+
+    return { hours, mins };
+}
+
 /**
  * Oblicza liczbę godzin zmiany z uwzględnieniem przerwy.
  * Obsługuje zmiany nocne (przez północ).
@@ -22,7 +55,7 @@
 export function calculateShiftHours(
     startTime: string,
     endTime: string,
-    breakMinutes: number = 0
+    breakMinutes: number = 0,
 ): number {
     const [startH, startM] = startTime.split(":").map(Number);
     const [endH, endM] = endTime.split(":").map(Number);

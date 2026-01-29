@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { showToast } from "@/lib/utils/toast";
 import { logger } from "@/lib/utils/logger";
 import { format } from "date-fns";
+import { createAbsenceData } from "@/lib/utils/absence-helpers";
 import { pl } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -73,15 +74,16 @@ export function AddAbsenceDialog({
                 const supabase = createClient();
                 const { error } = await supabase
                     .from("employee_absences")
-                    .insert({
-                        employee_id: employee.id,
-                        organization_id: organizationId,
-                        absence_type: formData.absenceType,
-                        start_date: format(formData.startDate, "yyyy-MM-dd"),
-                        end_date: format(formData.endDate, "yyyy-MM-dd"),
-                        is_paid: formData.isPaid,
-                        notes: null,
-                    });
+                    .insert(
+                        createAbsenceData(
+                            employee.id,
+                            organizationId,
+                            formData.absenceType,
+                            formData.startDate,
+                            formData.endDate,
+                            formData.isPaid,
+                        ),
+                    );
 
                 if (error) throw error;
 
@@ -93,7 +95,7 @@ export function AddAbsenceDialog({
                 showToast.success(
                     existingShift
                         ? "Dodano nieobecność i usunięto zmianę"
-                        : "Dodano nieobecność"
+                        : "Dodano nieobecność",
                 );
                 onOpenChange(false);
                 onAbsenceAdded();
@@ -118,7 +120,7 @@ export function AddAbsenceDialog({
             onOpenChange,
             onAbsenceAdded,
             onOpenSwapDialog,
-        ]
+        ],
     );
 
     // Aktualizuj isPaid automatycznie przy zmianie typu
@@ -182,7 +184,7 @@ export function AddAbsenceDialog({
                                         {format(
                                             formData.startDate,
                                             "d MMM yyyy",
-                                            { locale: pl }
+                                            { locale: pl },
                                         )}
                                     </Button>
                                 </PopoverTrigger>
@@ -218,7 +220,7 @@ export function AddAbsenceDialog({
                                         {format(
                                             formData.endDate,
                                             "d MMM yyyy",
-                                            { locale: pl }
+                                            { locale: pl },
                                         )}
                                     </Button>
                                 </PopoverTrigger>

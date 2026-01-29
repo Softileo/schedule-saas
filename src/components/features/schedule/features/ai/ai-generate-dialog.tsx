@@ -13,12 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-    Sparkles,
-    AlertCircle,
-    CheckCircle2,
-    AlertTriangle,
-} from "lucide-react";
+import { Sparkles, AlertCircle, AlertTriangle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { format } from "date-fns";
 import { pl } from "date-fns/locale";
@@ -28,6 +23,7 @@ import {
     getEmployeeInitials,
 } from "@/lib/core/employees/utils";
 import { SIGNIFICANT_HOURS_SURPLUS } from "@/lib/constants/labor-code";
+import { NoIssuesMessage } from "./components/no-issues-message";
 import { AI_GENERATION_LIMIT_PER_MONTH } from "@/lib/constants/ai";
 
 // Wydzielone komponenty i typy
@@ -560,15 +556,7 @@ export function AIGenerateDialog({
                                                 0 &&
                                             !hasStaffingIssues
                                         ) {
-                                            return (
-                                                <div className="flex items-center gap-2 p-3 bg-emerald-50 text-emerald-700 rounded-lg text-sm">
-                                                    <CheckCircle2 className="h-4 w-4 shrink-0" />
-                                                    <span>
-                                                        Brak naruszeń i
-                                                        problemów z grafikiem
-                                                    </span>
-                                                </div>
-                                            );
+                                            return <NoIssuesMessage />;
                                         }
 
                                         return (

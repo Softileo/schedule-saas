@@ -7,6 +7,7 @@ import { getErrorMessage } from "@/lib/utils/error";
 import { getEmployeeFullName } from "@/lib/core/employees/utils";
 import { logger } from "@/lib/utils/logger";
 import { format, parseISO, eachDayOfInterval } from "date-fns";
+import { createAbsenceData } from "@/lib/utils/absence-helpers";
 import { pl } from "date-fns/locale";
 import { showToast } from "@/lib/utils/toast";
 import { Button } from "@/components/ui/button";
@@ -110,15 +111,19 @@ export function EmployeeAbsencesDialog({
         try {
             const supabase = createClient();
 
-            const { error } = await supabase.from("employee_absences").insert({
-                employee_id: employee.id,
-                organization_id: organizationId,
-                absence_type: formData.absenceType,
-                start_date: format(formData.startDate, "yyyy-MM-dd"),
-                end_date: format(formData.endDate, "yyyy-MM-dd"),
-                is_paid: formData.isPaid,
-                notes: formData.notes || null,
-            });
+            const { error } = await supabase
+                .from("employee_absences")
+                .insert(
+                    createAbsenceData(
+                        employee.id,
+                        organizationId,
+                        formData.absenceType,
+                        formData.startDate,
+                        formData.endDate,
+                        formData.isPaid,
+                        formData.notes,
+                    ),
+                );
 
             if (error) throw error;
 
@@ -211,7 +216,7 @@ export function EmployeeAbsencesDialog({
                                                 ...prev,
                                                 absenceType: value,
                                                 isPaid: !isUnpaidAbsenceType(
-                                                    value
+                                                    value,
                                                 ),
                                             }))
                                         }
@@ -230,7 +235,7 @@ export function EmployeeAbsencesDialog({
                                                 >
                                                     {format(
                                                         formData.startDate,
-                                                        "dd.MM.yyyy"
+                                                        "dd.MM.yyyy",
                                                     )}
                                                 </Button>
                                             </PopoverTrigger>
@@ -267,7 +272,7 @@ export function EmployeeAbsencesDialog({
                                                 >
                                                     {format(
                                                         formData.endDate,
-                                                        "dd.MM.yyyy"
+                                                        "dd.MM.yyyy",
                                                     )}
                                                 </Button>
                                             </PopoverTrigger>
@@ -377,12 +382,12 @@ export function EmployeeAbsencesDialog({
                                             <div className="text-xs text-slate-500">
                                                 {format(
                                                     parseISO(
-                                                        absence.start_date
+                                                        absence.start_date,
                                                     ),
                                                     "d MMM",
                                                     {
                                                         locale: pl,
-                                                    }
+                                                    },
                                                 )}{" "}
                                                 -{" "}
                                                 {format(
@@ -390,13 +395,13 @@ export function EmployeeAbsencesDialog({
                                                     "d MMM yyyy",
                                                     {
                                                         locale: pl,
-                                                    }
+                                                    },
                                                 )}
                                                 <span className="text-slate-400 ml-1">
                                                     (
                                                     {calculateDays(
                                                         absence.start_date,
-                                                        absence.end_date
+                                                        absence.end_date,
                                                     )}{" "}
                                                     dni)
                                                 </span>

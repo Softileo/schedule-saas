@@ -8,6 +8,7 @@
  */
 
 import { logger } from "@/lib/utils/logger";
+import { getDateRangeSet } from "@/lib/utils/date-range";
 import {
     type SchedulerInput,
     type GeneratedShift,
@@ -223,38 +224,13 @@ export class GreedyScheduler {
             const absenceDatesSet = new Set<string>();
             if (emp.absences && emp.absences.length > 0) {
                 for (const absence of emp.absences) {
-                    // Zakres
-                    if (
-                        absence.start_date > monthEnd ||
-                        absence.end_date < monthStart
-                    )
-                        continue;
-
-                    const absStart =
-                        absence.start_date < monthStart
-                            ? monthStart
-                            : absence.start_date;
-                    const absEnd =
-                        absence.end_date > monthEnd
-                            ? monthEnd
-                            : absence.end_date;
-
-                    const startDate = new Date(absStart);
-                    const endDate = new Date(absEnd);
-
-                    for (
-                        let d = new Date(startDate);
-                        d <= endDate;
-                        d.setDate(d.getDate() + 1)
-                    ) {
-                        const dateStr = `${d.getFullYear()}-${String(
-                            d.getMonth() + 1,
-                        ).padStart(2, "0")}-${String(d.getDate()).padStart(
-                            2,
-                            "0",
-                        )}`;
-                        absenceDatesSet.add(dateStr);
-                    }
+                    const dates = getDateRangeSet(
+                        absence.start_date,
+                        absence.end_date,
+                        monthStart,
+                        monthEnd,
+                    );
+                    dates.forEach((date) => absenceDatesSet.add(date));
                 }
 
                 if (absenceDatesSet.size > 0) {

@@ -6,9 +6,10 @@
  * =============================================================================
  */
 
-import { AlertCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { EmployeeStats, ScheduleQuality } from "./types";
+import { NoIssuesMessage } from "./no-issues-message";
 
 // =============================================================================
 // STAŁE
@@ -28,10 +29,10 @@ interface WarningsPanelProps {
  */
 export function WarningsPanel({ stats, scheduleQuality }: WarningsPanelProps) {
     const employeesWithViolations = stats.filter(
-        (s) => s.violations && s.violations.length > 0
+        (s) => s.violations && s.violations.length > 0,
     );
     const employeesWithHoursDiff = stats.filter(
-        (s) => Math.abs(s.hoursDiff) > HOURS_DIFF_THRESHOLD
+        (s) => Math.abs(s.hoursDiff) > HOURS_DIFF_THRESHOLD,
     );
 
     // Luki w obsadzie z warnings
@@ -48,12 +49,7 @@ export function WarningsPanel({ stats, scheduleQuality }: WarningsPanelProps) {
         employeesWithHoursDiff.length === 0 &&
         !hasStaffingIssues
     ) {
-        return (
-            <div className="flex items-center gap-2 p-3 bg-emerald-50 text-emerald-700 rounded-lg text-sm">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span>Brak naruszeń i problemów z grafikiem</span>
-            </div>
-        );
+        return <NoIssuesMessage />;
     }
 
     return (

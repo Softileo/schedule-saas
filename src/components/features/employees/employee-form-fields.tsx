@@ -4,6 +4,7 @@ import { UseFormRegister, FieldErrors, UseFormSetValue } from "react-hook-form";
 import { EmployeeInput } from "@/lib/validations/employee";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { EmailInput } from "@/components/common/form/email-input";
 import {
     Select,
     SelectContent,
@@ -11,7 +12,10 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { EMPLOYMENT_TYPES, type EmploymentType } from "@/lib/constants/employment";
+import {
+    EMPLOYMENT_TYPES,
+    type EmploymentType,
+} from "@/lib/constants/employment";
 
 interface EmployeeFormFieldsProps {
     register: UseFormRegister<EmployeeInput>;
@@ -68,25 +72,14 @@ export function EmployeeFormFields({
                 </div>
             </div>
 
-            <div className="space-y-2">
-                <Label htmlFor="email">
-                    Email{showPlaceholders ? " (opcjonalnie)" : ""}
-                </Label>
-                <Input
-                    id="email"
-                    type="email"
-                    placeholder={
-                        showPlaceholders ? "jan@example.com" : undefined
-                    }
-                    disabled={isLoading}
-                    {...register("email")}
-                />
-                {errors.email && (
-                    <p className="text-sm text-destructive">
-                        {errors.email.message}
-                    </p>
-                )}
-            </div>
+            <EmailInput
+                label={showPlaceholders ? "Email (opcjonalnie)" : "Email"}
+                placeholder={showPlaceholders ? "jan@example.com" : undefined}
+                disabled={isLoading}
+                error={errors.email}
+                register={register("email")}
+                optional={showPlaceholders}
+            />
 
             <div className="space-y-2">
                 <Label htmlFor="phone">

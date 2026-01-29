@@ -13,6 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getPoradnikiByCluster } from "@/lib/mdx";
 import { ContentCard } from "@/components/features/content/ContentCard";
+import { ArticlesGridSection } from "@/components/features/seo/articles-grid-section";
 import { SEOPageLayout, CTABanner } from "@/components/features/seo";
 import { Badge } from "@/components/ui/badge";
 
@@ -123,43 +124,13 @@ export default async function KodeksPracyPage() {
             </div>
 
             {/* Main Content */}
-            <div className="py-16 bg-gray-50">
-                <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center gap-3 mb-8">
-                        <Scale className="h-8 w-8 text-violet-600" />
-                        <h2 className="text-3xl font-bold text-gray-900">
-                            Poradniki i interpretacje
-                        </h2>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {articles.map((article) => (
-                            <ContentCard
-                                key={article.slug}
-                                title={article.title}
-                                description={article.description}
-                                slug={article.slug}
-                                date={article.date}
-                                category="Kodeks Pracy"
-                                image={article.image}
-                                readingTime={article.readingTime}
-                                tags={article.tags}
-                                hrefPrefix="/poradniki"
-                                variant="grid"
-                            />
-                        ))}
-
-                        {articles.length === 0 && (
-                            <Card className="p-12 text-center col-span-full">
-                                <p className="text-gray-600">
-                                    Trwają prace nad artykułami w tej sekcji.
-                                    Wróć wkrótce!
-                                </p>
-                            </Card>
-                        )}
-                    </div>
-                </div>
-            </div>
+            <ArticlesGridSection
+                articles={articles}
+                category="Kodeks Pracy"
+                title="Poradniki i interpretacje"
+                icon={<Scale className="h-8 w-8 text-violet-600" />}
+                variant="grid"
+            />
 
             {/* Main Topics */}
             <div className="py-16 bg-white">
