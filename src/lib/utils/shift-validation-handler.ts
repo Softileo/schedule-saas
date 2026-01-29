@@ -4,7 +4,6 @@
  * =============================================================================
  */
 
-
 import type { Employee } from "@/types";
 import type { ValidationError } from "@/lib/core/schedule/validation";
 
