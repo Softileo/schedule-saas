@@ -14,9 +14,8 @@ export class InitialStaffingStep {
             allWorkingDays,
             shiftManager,
             candidateFinder,
-            employeeStates,
         } = context;
-        const { templates, settings, employees } = input;
+        const { templates, settings } = input;
         const minEmployeesPerShift = settings.min_employees_per_shift || 1;
 
         // Loguj wszystkie szablony z min/max employees

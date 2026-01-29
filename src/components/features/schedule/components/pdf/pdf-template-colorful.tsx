@@ -14,12 +14,7 @@ import {
     getDay,
 } from "date-fns";
 import type { SchedulePDFData } from "./pdf-types";
-import {
-    getDayName,
-    lightenColor,
-    chunkArray,
-    chunkEmployeesCustom,
-} from "./pdf-utils";
+import { getDayName, lightenColor, chunkEmployeesCustom } from "./pdf-utils";
 import { MONTH_NAMES, formatTime } from "@/lib/utils/date-helpers";
 import { createHolidaysMap, isTradingSunday } from "@/lib/core/schedule/utils";
 

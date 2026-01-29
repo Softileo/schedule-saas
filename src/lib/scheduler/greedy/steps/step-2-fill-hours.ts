@@ -7,10 +7,7 @@ import {
     getDayOfWeek,
     calculateRestHours,
 } from "../../scheduler-utils";
-import {
-    calculateHoursDeficit,
-    calculateHoursSurplus,
-} from "../../greedy/helpers";
+import { calculateHoursDeficit } from "../../greedy/helpers";
 import { SIGNIFICANT_HOURS_DEFICIT } from "../../greedy/config"; // Assuming this is correct import from original file logic
 import { canEmployeeWorkOnDate } from "../../validation";
 import { DAY_KEYS } from "@/lib/constants/days";
@@ -306,12 +303,7 @@ export class FillHoursStep {
                 });
 
                 if (!perfectMatch) {
-                    const customShiftAdded = this.tryAddCustomShift(
-                        state,
-                        day,
-                        deficit,
-                        context,
-                    );
+                    const customShiftAdded = this.tryAddCustomShift();
                     if (customShiftAdded) {
                         return true;
                     }
@@ -481,12 +473,7 @@ export class FillHoursStep {
         return false;
     }
 
-    private tryAddCustomShift(
-        _state: EmployeeScheduleState,
-        _date: string,
-        _hoursNeeded: number,
-        _context: SchedulerContext,
-    ): boolean {
+    private tryAddCustomShift(): boolean {
         // STRICT MODE: Custom shifts are disabled to prevent bypassing constraints.
         // We only use strictly defined templates to ensure MAX/MIN limits and Applicable Days are respected.
         return false;

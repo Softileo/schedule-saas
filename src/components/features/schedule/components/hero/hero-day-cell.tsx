@@ -10,10 +10,6 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-    SHIFT_TYPE_STYLES,
-    getShiftTypeFromTime,
-} from "@/lib/constants/shift-styles";
 import type {
     LocalShift,
     PublicHoliday,
@@ -74,9 +70,6 @@ export const HeroDayCell = memo(function HeroDayCell({
     // Czy ma zmianę do obsadzenia (nieobecność + zmiana przypisana)
     // Removed strict requirement for shift presence to allow managing pure absences
     const needsReplacement = !!absence && !!shift;
-
-    const shiftType = shift ? getShiftTypeFromTime(shift.start_time) : null;
-    const colors = shiftType ? SHIFT_TYPE_STYLES[shiftType] : null;
 
     // Jeśli shift nie ma koloru (custom shift), użyj szarego
     const finalShiftColor = shift ? (shiftColor ?? "#94a3b8") : null;

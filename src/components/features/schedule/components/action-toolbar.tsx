@@ -13,7 +13,6 @@ import {
 import { FileDown, Sparkles, UserX } from "lucide-react";
 import { ShiftTemplatesManager } from "./shift-templates-manager";
 import { ClearScheduleButton } from "./clear-schedule-button";
-import { EmployeesDropdown } from "./employees-dropdown";
 import type { ShiftTemplate, Employee } from "@/types";
 import Link from "next/link";
 
@@ -33,7 +32,6 @@ interface ActionToolbarProps {
 export const ActionToolbar = memo(function ActionToolbar({
     shiftTemplates,
     organizationId,
-    employees,
     onOpenPDFDialog,
     onOpenAIDialog,
     onClearSchedule,
@@ -100,7 +98,7 @@ export const ActionToolbar = memo(function ActionToolbar({
                                 variant="icon"
                             />
                         </div> */}
-                        <Link href="/pracownicy">  
+                        <Link href="/pracownicy">
                             <Button
                                 variant="ghost"
                                 size="icon"

@@ -284,7 +284,7 @@ export function getReplacementSuggestions({
                 const startTimeShort = sourceShift.start_time.slice(0, 5);
                 const endTimeShort = sourceShift.end_time.slice(0, 5);
 
-                let reason = `Możliwe przesunięcie ze zmiany ${startTimeShort}-${endTimeShort}\nBędzie: ${peopleOnSourceShift} osób ➜ ${peopleOnSourceShift - 1} osób`;
+                const reason = `Możliwe przesuniÄcie ze zmiany ${startTimeShort}-${endTimeShort}\nBÄdzie: ${peopleOnSourceShift} osĂłb ➜ ${peopleOnSourceShift - 1} osĂłb`;
                 let isNeutralSwap = false;
 
                 // Calculate impact of swap

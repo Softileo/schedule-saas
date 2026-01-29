@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import type { MembershipWithOrg, OrganizationWithRole } from "@/types";
+import type { OrganizationWithRole } from "@/types";
 
 /**
  * Gets user organizations with ownership information.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { logger } from "@/lib/utils/logger";
@@ -32,11 +32,7 @@ export default function TradingSundaysAdminPage() {
 
     const supabase = createClient();
 
-    useEffect(() => {
-        loadSundays();
-    }, [selectedYear]);
-
-    const loadSundays = async () => {
+    const loadSundays = useCallback(async () => {
         setLoading(true);
         try {
             const { data, error } = await supabase
@@ -53,7 +49,11 @@ export default function TradingSundaysAdminPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [supabase, selectedYear]);
+
+    useEffect(() => {
+        loadSundays();
+    }, [loadSundays]);
 
     const addSunday = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -78,9 +78,14 @@ export default function TradingSundaysAdminPage() {
             setNewDate("");
             setNewDescription("");
             loadSundays();
-        } catch (error: any) {
+        } catch (error: unknown) {
             logger.error("Error adding trading sunday:", error);
-            if (error.code === "23505") {
+            if (
+                error &&
+                typeof error === "object" &&
+                "code" in error &&
+                error.code === "23505"
+            ) {
                 toast.error("Ta niedziela już istnieje");
             } else {
                 toast.error("Nie udało się dodać niedzieli");

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, startTransition } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -257,8 +257,10 @@ export function HeroSection() {
     // Reset formularza i pozycji przy zmianie komórki
     useEffect(() => {
         if (!selectedCell) {
-            setShowCustomForm(false);
-            setPanelCoords(null);
+            startTransition(() => {
+                setShowCustomForm(false);
+                setPanelCoords(null);
+            });
             return;
         }
 
@@ -268,17 +270,19 @@ export function HeroSection() {
                 s.emp === selectedCell.empIdx &&
                 s.days.includes(selectedCell.dayIdx),
         );
-        if (cellShifts.length > 0) {
-            const [start, end] = cellShifts[0].time.split("-");
-            setCustomStartTime(start);
-            setCustomEndTime(end);
-        } else {
-            setCustomStartTime("09:00");
-            setCustomEndTime("17:00");
-        }
-        setCustomBreakMinutes(0);
-        setShowCustomForm(false);
-    }, [selectedCell?.empIdx, selectedCell?.dayIdx, demoShifts]);
+        startTransition(() => {
+            if (cellShifts.length > 0) {
+                const [start, end] = cellShifts[0].time.split("-");
+                setCustomStartTime(start);
+                setCustomEndTime(end);
+            } else {
+                setCustomStartTime("09:00");
+                setCustomEndTime("17:00");
+            }
+            setCustomBreakMinutes(0);
+            setShowCustomForm(false);
+        });
+    }, [selectedCell, demoShifts]);
 
     // Obliczanie pozycji panelu - identyczne jak w TemplateSelector
     useEffect(() => {

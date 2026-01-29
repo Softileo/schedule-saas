@@ -40,7 +40,6 @@ export default async function DashboardPage({
         .single();
 
     const userName = getFirstName(profile?.full_name ?? null);
-    const hasFeedback = profile?.user_feedback === true;
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth() + 1;
     const holidays = await fetchHolidays(currentYear);
@@ -151,7 +150,7 @@ export default async function DashboardPage({
                             upcomingAbsences={upcomingAbsences}
                             today={today}
                         />
-                        <ShareFeedback hasFeedback={hasFeedback} />
+                        <ShareFeedback />
                     </div>
                     {/* Right Column (Content) */}
                     <div className="lg:col-span-2 space-y-8 ">

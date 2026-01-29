@@ -62,24 +62,24 @@ const FilterPopover = memo(function FilterPopover({
     const popoverRef = useRef<HTMLDivElement>(null);
     const [searchQuery, setSearchQuery] = useState("");
 
-    // Oblicz pozycję synchronicznie przy montowaniu
-    const getPosition = () => {
-        if (anchorRef.current) {
-            const rect = anchorRef.current.getBoundingClientRect();
-            return {
-                top: rect.bottom + window.scrollY + 4,
-                left: rect.left + window.scrollX,
-            };
-        }
-        return { top: 0, left: 0 };
-    };
-
-    const [position, setPosition] = useState(getPosition);
+    const [position, setPosition] = useState(() => ({ top: 0, left: 0 }));
 
     useEffect(() => {
+        // Oblicz pozycję synchronicznie przy montowaniu
+        const getPosition = () => {
+            if (anchorRef.current) {
+                const rect = anchorRef.current.getBoundingClientRect();
+                return {
+                    top: rect.bottom + window.scrollY + 4,
+                    left: rect.left + window.scrollX,
+                };
+            }
+            return { top: 0, left: 0 };
+        };
+
         // Zaktualizuj pozycję po zamontowaniu, aby naprawić ewentualny mismatch SSR/CSR
         setPosition(getPosition());
-    }, []);
+    }, [anchorRef]);
 
     // Aktualizuj pozycję przy scrollu/resize
     useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, startTransition } from "react";
 import { List } from "lucide-react";
 import Link from "next/link";
 
@@ -40,7 +40,9 @@ export function TableOfContents({ className = "" }: TableOfContentsProps) {
             };
         });
 
-        setToc(items);
+        startTransition(() => {
+            setToc(items);
+        });
 
         const observer = new IntersectionObserver(
             (entries) => {

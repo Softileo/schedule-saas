@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, startTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
@@ -54,42 +54,44 @@ export function BlogPostsList({ posts, categories, tags }: BlogPostsListProps) {
     );
     const [isAnimating, setIsAnimating] = useState(false);
 
+    const handleCategoryChange = useCallback(
+        (category: string | null, updateUrl = true) => {
+            if (activeCategory === category) return;
+
+            setIsAnimating(true);
+            setActiveCategory(category);
+
+            // Small delay to allow exit animation if we had one, or just trigger re-render
+            setTimeout(() => {
+                setIsAnimating(false);
+            }, 300);
+
+            if (updateUrl) {
+                const params = new URLSearchParams(searchParams);
+                if (category) {
+                    params.set("kategoria", category);
+                } else {
+                    params.delete("kategoria");
+                }
+                // Use replace to avoid filling history stack too much, or push if you want history
+                // scroll: false prevents jumping to top
+                router.replace(`${pathname}?${params.toString()}`, {
+                    scroll: false,
+                });
+            }
+        },
+        [activeCategory, pathname, router, searchParams],
+    );
+
     // Update state when URL changes (handling back/forward navigation)
     useEffect(() => {
         const cat = searchParams.get("kategoria");
         if (cat !== activeCategory) {
-            handleCategoryChange(cat, false);
-        }
-    }, [searchParams]);
-
-    const handleCategoryChange = (
-        category: string | null,
-        updateUrl = true,
-    ) => {
-        if (activeCategory === category) return;
-
-        setIsAnimating(true);
-        setActiveCategory(category);
-
-        // Small delay to allow exit animation if we had one, or just trigger re-render
-        setTimeout(() => {
-            setIsAnimating(false);
-        }, 300);
-
-        if (updateUrl) {
-            const params = new URLSearchParams(searchParams);
-            if (category) {
-                params.set("kategoria", category);
-            } else {
-                params.delete("kategoria");
-            }
-            // Use replace to avoid filling history stack too much, or push if you want history
-            // scroll: false prevents jumping to top
-            router.replace(`${pathname}?${params.toString()}`, {
-                scroll: false,
+            startTransition(() => {
+                handleCategoryChange(cat, false);
             });
         }
-    };
+    }, [searchParams, activeCategory, handleCategoryChange]);
 
     const filteredPosts = activeCategory
         ? posts.filter((post) => post.category === activeCategory)

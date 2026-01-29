@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, startTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -143,7 +143,9 @@ export function MarketingHeader({ variant = "default" }: MarketingHeaderProps) {
 
     // Zamknij mobile menu przy zmianie ścieżki
     useEffect(() => {
-        setMobileMenuOpen(false);
+        startTransition(() => {
+            setMobileMenuOpen(false);
+        });
     }, [pathname]);
 
     const isActive = (href: string) => {
@@ -157,7 +159,7 @@ export function MarketingHeader({ variant = "default" }: MarketingHeaderProps) {
                 "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
                 scrolled || variant === "default"
                     ? "bg-white/80 backdrop-blur-sm border-b border-gray-200"
-                    : "bg-transparent"
+                    : "bg-transparent",
             )}
         >
             <div className="container mx-auto px-2 lg:px-4 py-1.5">
@@ -182,7 +184,7 @@ export function MarketingHeader({ variant = "default" }: MarketingHeaderProps) {
                                         "flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors",
                                         isActive(item.href)
                                             ? "text-blue-600 bg-blue-50"
-                                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
                                     )}
                                 >
                                     {item.label}
@@ -191,7 +193,7 @@ export function MarketingHeader({ variant = "default" }: MarketingHeaderProps) {
                                             className={cn(
                                                 "w-4 h-4 transition-transform duration-200",
                                                 activeSubmenu === item.label &&
-                                                    "rotate-180"
+                                                    "rotate-180",
                                             )}
                                         />
                                     )}
@@ -230,7 +232,7 @@ export function MarketingHeader({ variant = "default" }: MarketingHeaderProps) {
                                                                     </div>
                                                                 </div>
                                                             </Link>
-                                                        )
+                                                        ),
                                                     )}
                                                 </div>
                                                 {/* Submenu footer link */}
@@ -294,7 +296,7 @@ export function MarketingHeader({ variant = "default" }: MarketingHeaderProps) {
                     "lg:hidden fixed inset-x-0 top-16 bg-white border-b border-gray-100 shadow-lg transition-all duration-300 overflow-hidden",
                     mobileMenuOpen
                         ? "max-h-[calc(100vh-4rem)] opacity-100"
-                        : "max-h-0 opacity-0"
+                        : "max-h-0 opacity-0",
                 )}
             >
                 <div className="container mx-auto px-4 py-4 overflow-y-auto max-h-[calc(100vh-8rem)]">
@@ -314,7 +316,7 @@ export function MarketingHeader({ variant = "default" }: MarketingHeaderProps) {
                                                     "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
                                                     isActive(subitem.href)
                                                         ? "bg-blue-50 text-blue-600"
-                                                        : "text-gray-700 hover:bg-gray-50"
+                                                        : "text-gray-700 hover:bg-gray-50",
                                                 )}
                                             >
                                                 <subitem.icon className="w-5 h-5" />
@@ -336,7 +338,7 @@ export function MarketingHeader({ variant = "default" }: MarketingHeaderProps) {
                                             "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
                                             isActive(item.href)
                                                 ? "bg-blue-50 text-blue-600"
-                                                : "text-gray-700 hover:bg-gray-50"
+                                                : "text-gray-700 hover:bg-gray-50",
                                         )}
                                     >
                                         <span className="font-medium">

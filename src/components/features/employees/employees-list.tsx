@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Employee } from "@/types";
+import { Employee, EmployeeAbsence } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+type EmployeeWithAbsences = Employee & {
+    employee_absences?: EmployeeAbsence[];
+};
+
 import {
     Mail,
     Phone,
@@ -279,28 +284,28 @@ export function EmployeesList({
                                                                 <CalendarDays className="h-5 w-5" />
 
                                                                 {/* Czerwona kropka z liczbą */}
-                                                                {(
-                                                                    employee as any
+                                                                {((
+                                                                    employee as EmployeeWithAbsences
                                                                 )
                                                                     .employee_absences
-                                                                    ?.length >
-                                                                    0 && (
+                                                                    ?.length ??
+                                                                    0) > 0 && (
                                                                     <span className="absolute top-0 right-0 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-semibold text-white">
-                                                                        {
-                                                                            (
-                                                                                employee as any
-                                                                            )
-                                                                                .employee_absences
-                                                                                .length
-                                                                        }
+                                                                        {(
+                                                                            employee as EmployeeWithAbsences
+                                                                        )
+                                                                            .employee_absences
+                                                                            ?.length ??
+                                                                            0}
                                                                     </span>
                                                                 )}
                                                             </Button>
                                                         </TooltipTrigger>
                                                         <TooltipContent>
                                                             Nieobecności (
-                                                            {(employee as any)
-                                                                .employee_absences
+                                                            {(
+                                                                employee as EmployeeWithAbsences
+                                                            ).employee_absences
                                                                 ?.length || 0}
                                                             )
                                                         </TooltipContent>

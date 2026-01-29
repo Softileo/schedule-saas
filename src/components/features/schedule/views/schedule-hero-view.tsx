@@ -515,7 +515,7 @@ ScheduleHeroViewProps) {
             toast.success("Zastąpiono pracownika");
             setSelectedAbsenceData(null);
         },
-        [scheduleId, onAddShift, onRemoveShift],
+        [scheduleId, onAddShift, onRemoveShift, employees],
     );
 
     // Scroll handlers

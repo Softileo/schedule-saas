@@ -81,7 +81,6 @@ export function ScheduleCalendarDnD({
         saveAll,
         setLocalShifts,
         handleAddShift: addShiftToState,
-        handleAddShiftFromTemplate: validateAddShift,
         checkViolationForCell,
     } = useScheduleState({
         year,

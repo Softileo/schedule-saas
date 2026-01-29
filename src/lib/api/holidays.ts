@@ -83,7 +83,7 @@ export function calculateTradingSundays(year: number): string[] {
     // 3. MODUŁ PRZEDŚWIĄTECZNY (GRUDZIEŃ): 3 niedziele przed Wigilią (24.12)
     // Zgodnie z nowelizacją, skoro 24.12 jest wolny, handlowe są 3 niedziele przed nim.
     const christmasEve = new Date(year, 11, 24);
-    let daysToSubtract =
+    const daysToSubtract =
         christmasEve.getDay() === 0 ? 7 : christmasEve.getDay();
 
     // Znajdź pierwszą niedzielę przed Wigilią
@@ -97,9 +97,6 @@ export function calculateTradingSundays(year: number): string[] {
 
     return Array.from(tradingSundays).sort();
 }
-
-// Cache dla obliczonych niedziel handlowych
-const tradingSundaysCache = new Map<number, string[]>();
 
 /**
  * Pobiera niedziele handlowe dla danego roku (z cache)
@@ -150,7 +147,7 @@ export function getTradingSundays(year: number): string[] {
 
     // 3. Grudzień - 3 niedziele przed Wigilią (Nowelizacja 2024/2025)
     const christmasEve = new Date(year, 11, 24);
-    let daysToSubtract =
+    const daysToSubtract =
         christmasEve.getDay() === 0 ? 7 : christmasEve.getDay();
     const firstBefore = new Date(year, 11, 24 - daysToSubtract);
 

@@ -37,13 +37,13 @@ export function cn(...inputs: ClassValue[]) {
  */
 export function variants<
     V extends Record<string, Record<string, string>>,
-    D extends { [K in keyof V]?: keyof V[K] }
+    D extends { [K in keyof V]?: keyof V[K] },
 >(config: {
     base?: string;
     variants: V;
     defaultVariants?: D;
 }): (
-    props?: { [K in keyof V]?: keyof V[K] } & { className?: string }
+    props?: { [K in keyof V]?: keyof V[K] } & { className?: string },
 ) => string {
     return (props = {}) => {
         const { className, ...variantProps } = props;
@@ -70,11 +70,3 @@ export function variants<
         return cn(...classes);
     };
 }
-
-// Re-export error utilities from centralized location
-export {
-    getErrorMessage,
-    logError,
-    isError,
-    isSupabaseError,
-} from "./utils/error";

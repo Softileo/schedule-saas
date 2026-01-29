@@ -22,7 +22,7 @@ const badgeVariants = cva(
         defaultVariants: {
             variant: "default",
         },
-    }
+    },
 );
 
 function Badge({
@@ -43,4 +43,4 @@ function Badge({
     );
 }
 
-export { Badge, badgeVariants };
+export { Badge };

@@ -5,9 +5,7 @@ import { Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import clsx from "clsx";
 
-
-export function ShareFeedback({ hasFeedback }: { hasFeedback: boolean }) {
-    
+export function ShareFeedback() {
     const [rating, setRating] = useState<number | null>(null);
     const [hovered, setHovered] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);

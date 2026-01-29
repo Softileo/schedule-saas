@@ -10,7 +10,6 @@ import {
     ResponsiveContainer,
     CartesianGrid,
     LabelList,
-    Legend,
 } from "recharts";
 
 interface TemplateShiftCount {

@@ -19,7 +19,6 @@ import {
     Download,
     ExternalLink,
     CheckCircle2,
-    Star,
     Users,
     Clock,
     Calendar,
@@ -342,7 +341,7 @@ export default function SzablonyPage() {
                                                         <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-500" />
                                                         {feature}
                                                     </span>
-                                                )
+                                                ),
                                             )}
                                         </div>
 

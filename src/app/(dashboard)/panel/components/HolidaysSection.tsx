@@ -30,7 +30,7 @@ export default function HolidaysSection({
 
             <CardContent className="space-y-3">
                 {upcomingHolidays.length > 0 ? (
-                    upcomingHolidays.map((holiday, index) => {
+                    upcomingHolidays.map((holiday) => {
                         const holidayDate = parseISO(holiday.date);
                         const daysUntil = differenceInDays(holidayDate, today);
 

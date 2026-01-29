@@ -9,7 +9,6 @@ import { Employee } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
     Dialog,
@@ -19,7 +18,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { InlineLoader, ButtonSpinner } from "@/components/ui/page-loader";
-import { Clock, Gauge, CalendarCheck, FileText, Check, X } from "lucide-react";
+import { Clock, Gauge, CalendarCheck, Check, X } from "lucide-react";
 import { showToast } from "@/lib/utils/toast";
 import { cn } from "@/lib/utils";
 import {
@@ -227,7 +226,7 @@ export function EmployeePreferencesDialog({
                                 {DAYS_OF_WEEK.map((day) => {
                                     const isSelected =
                                         preferences.preferred_days.includes(
-                                            day.value
+                                            day.value,
                                         );
                                     return (
                                         <button
@@ -240,7 +239,7 @@ export function EmployeePreferencesDialog({
                                                 "w-11 h-11 rounded-lg text-sm font-medium transition-all border-2",
                                                 isSelected
                                                     ? "bg-green-500 text-white border-green-500 shadow-sm"
-                                                    : "bg-background hover:bg-green-50 hover:border-green-200 border-transparent"
+                                                    : "bg-background hover:bg-green-50 hover:border-green-200 border-transparent",
                                             )}
                                             title={day.fullLabel}
                                         >
@@ -270,7 +269,7 @@ export function EmployeePreferencesDialog({
                                 {DAYS_OF_WEEK.map((day) => {
                                     const isSelected =
                                         preferences.unavailable_days.includes(
-                                            day.value
+                                            day.value,
                                         );
                                     return (
                                         <button
@@ -283,7 +282,7 @@ export function EmployeePreferencesDialog({
                                                 "w-11 h-11 rounded-lg text-sm font-medium transition-all border-2",
                                                 isSelected
                                                     ? "bg-red-500 text-white border-red-500 shadow-sm"
-                                                    : "bg-background hover:bg-red-50 hover:border-red-200 border-transparent"
+                                                    : "bg-background hover:bg-red-50 hover:border-red-200 border-transparent",
                                             )}
                                             title={day.fullLabel}
                                         >
@@ -392,7 +391,7 @@ export function EmployeePreferencesDialog({
                                                     max_hours_per_day: e.target
                                                         .value
                                                         ? parseInt(
-                                                              e.target.value
+                                                              e.target.value,
                                                           )
                                                         : null,
                                                 }))
@@ -423,7 +422,7 @@ export function EmployeePreferencesDialog({
                                                     max_hours_per_week: e.target
                                                         .value
                                                         ? parseInt(
-                                                              e.target.value
+                                                              e.target.value,
                                                           )
                                                         : null,
                                                 }))

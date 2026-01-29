@@ -94,14 +94,12 @@ export default function NiedzieleHandlowePage() {
     };
 
     // Grupuj niedziele wg powodu
-    const groupedSundays = useMemo(() => {
-        return tradingSundays.map((date) => ({
-            date,
-            reason: getReasonForTradingSunday(date),
-            isPast: date < todayStr,
-            isNext: date === nextTradingSunday,
-        }));
-    }, [tradingSundays, todayStr, nextTradingSunday]);
+    const groupedSundays = tradingSundays.map((date) => ({
+        date,
+        reason: getReasonForTradingSunday(date),
+        isPast: date < todayStr,
+        isNext: date === nextTradingSunday,
+    }));
 
     return (
         <SEOPageLayout>
@@ -172,8 +170,8 @@ export default function NiedzieleHandlowePage() {
                                             isNext
                                                 ? "border-red-500 bg-red-50 shadow-md"
                                                 : isPast
-                                                ? "opacity-50"
-                                                : ""
+                                                  ? "opacity-50"
+                                                  : ""
                                         }`}
                                     >
                                         <div className="flex items-center gap-3">
@@ -190,7 +188,7 @@ export default function NiedzieleHandlowePage() {
                                                 <p className="font-semibold text-gray-900">
                                                     {formatDatePL(
                                                         date,
-                                                        "d MMMM"
+                                                        "d MMMM",
                                                     )}
                                                 </p>
                                                 <p className="text-xs text-gray-500">
@@ -204,7 +202,7 @@ export default function NiedzieleHandlowePage() {
                                             )}
                                         </div>
                                     </Card>
-                                )
+                                ),
                             )}
                         </div>
                     </div>

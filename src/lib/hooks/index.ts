@@ -25,16 +25,9 @@ export type {
     ViolationType,
 } from "./use-schedule-violations";
 
-export { useScheduleDnD } from "./use-schedule-dnd";
-
 export { useShiftTemplates } from "./use-shift-templates";
 
 export { useCurrentOrgSlug } from "./use-current-org-slug";
-
-export { useCalendarDays } from "./use-calendar-days";
-
-export { useDayStatus } from "./use-day-status";
-export type { DayStatus } from "./use-day-status";
 
 // =============================================================================
 // GENERAL PURPOSE HOOKS - Hooki ogólnego przeznaczenia
@@ -42,10 +35,8 @@ export type { DayStatus } from "./use-day-status";
 
 export { useAsyncAction } from "./use-async-action";
 
-export { useDialogState, useEmployeeDialogs } from "./use-dialog-state";
+export { useEmployeeDialogs } from "./use-dialog-state";
 
 export { useOrgSwitch } from "./use-org-switch";
-
-export { useAnimatedDots } from "./use-animated-dots";
 
 export { useRegisterSaveFunction } from "./use-register-save-function";

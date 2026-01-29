@@ -7,7 +7,7 @@ import {
     getNavItemStyles,
     getNavIconStyles,
 } from "@/components/features/layout/nav-styles";
-import { Building2, Plus, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { OrganizationWithRole } from "@/types";
 import { OrganizationSwitcher } from "./organization-switcher";

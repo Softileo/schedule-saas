@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { logger } from "@/lib/utils/logger";
@@ -43,7 +43,7 @@ export default function NewsletterAdminPage() {
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<"subscribers" | "campaigns">(
-        "subscribers"
+        "subscribers",
     );
 
     // Stan formularza subskrybenta
@@ -58,11 +58,7 @@ export default function NewsletterAdminPage() {
 
     const supabase = createClient();
 
-    useEffect(() => {
-        loadData();
-    }, []);
-
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true);
         try {
             // Załaduj subskrybentów
@@ -89,7 +85,11 @@ export default function NewsletterAdminPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [supabase]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
 
     const addSubscriber = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -110,9 +110,14 @@ export default function NewsletterAdminPage() {
             setNewEmail("");
             setNewFullName("");
             loadData();
-        } catch (error: any) {
+        } catch (error: unknown) {
             logger.error("Error adding subscriber:", error);
-            if (error.code === "23505") {
+            if (
+                error &&
+                typeof error === "object" &&
+                "code" in error &&
+                error.code === "23505"
+            ) {
                 toast.error("Ten email już istnieje");
             } else {
                 toast.error("Nie udało się dodać subskrybenta");
@@ -195,7 +200,7 @@ export default function NewsletterAdminPage() {
                 .eq("id", campaign.id);
 
             toast.success(
-                `Newsletter wysłany do ${activeSubscribers.length} odbiorców`
+                `Newsletter wysłany do ${activeSubscribers.length} odbiorców`,
             );
             setCampaignTitle("");
             setCampaignSubject("");
@@ -375,9 +380,9 @@ export default function NewsletterAdminPage() {
                                             <p className="text-xs text-slate-400">
                                                 {subscriber.subscribed_at
                                                     ? new Date(
-                                                          subscriber.subscribed_at
+                                                          subscriber.subscribed_at,
                                                       ).toLocaleDateString(
-                                                          "pl-PL"
+                                                          "pl-PL",
                                                       )
                                                     : "Brak daty"}
                                             </p>
@@ -521,9 +526,9 @@ export default function NewsletterAdminPage() {
                                                     {campaign.sent_at && (
                                                         <span className="text-xs text-slate-500">
                                                             {new Date(
-                                                                campaign.sent_at
+                                                                campaign.sent_at,
                                                             ).toLocaleDateString(
-                                                                "pl-PL"
+                                                                "pl-PL",
                                                             )}
                                                         </span>
                                                     )}

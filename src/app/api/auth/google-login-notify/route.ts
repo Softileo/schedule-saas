@@ -7,7 +7,7 @@ export async function POST(request: Request) {
         const { timestamp, userAgent } = body;
         await sendGoogleLoginAttemptNotification({ timestamp, userAgent });
         return NextResponse.json({ success: true });
-    } catch (error) {
+    } catch {
         return NextResponse.json(
             { error: "Błąd wysyłki powiadomienia" },
             { status: 500 },

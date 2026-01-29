@@ -10,21 +10,6 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Krótkie etykiety nieobecności
-const ABSENCE_SHORT_LABELS: Record<string, string> = {
-    vacation: "URL",
-    sick_leave: "L4",
-    on_demand: "UZ",
-    unpaid_leave: "UB",
-    training_paid: "SZK",
-    training_unpaid: "SZK",
-    day_off: "DW",
-    child_care: "OP",
-    maternity: "MAC",
-    paternity: "OJC",
-    other: "NB",
-};
-
 export interface ShiftStat {
     timeLabel: string; // "06:00-14:00"
     count: number;
@@ -77,20 +62,20 @@ export const EmployeeRowMemo = memo(function EmployeeRow({
         hasViolations
             ? "bg-red-50/80 border-l-red-500 border-b-red-200/50"
             : hasSignificantOvertime
-            ? "bg-amber-50/50 border-l-amber-400 border-b-slate-200"
-            : isExact
-            ? "bg-emerald-50/50 border-l-emerald-400 border-b-slate-200"
-            : "border-l-transparent border-b-slate-200 hover:bg-slate-50/50"
+              ? "bg-amber-50/50 border-l-amber-400 border-b-slate-200"
+              : isExact
+                ? "bg-emerald-50/50 border-l-emerald-400 border-b-slate-200"
+                : "border-l-transparent border-b-slate-200 hover:bg-slate-50/50",
     );
 
     // Kolor tekstu godzin
     const hoursColor = hasViolations
         ? "text-red-600 font-medium"
         : hasSignificantOvertime
-        ? "text-amber-600 font-medium"
-        : isExact
-        ? "text-emerald-600 font-medium"
-        : "text-slate-400";
+          ? "text-amber-600 font-medium"
+          : isExact
+            ? "text-emerald-600 font-medium"
+            : "text-slate-400";
 
     const bgColor = employee.color || DEFAULT_COLOR;
     const initials = `${(employee.first_name[0] || "").toUpperCase()}${(
@@ -165,7 +150,7 @@ export const EmployeeRowMemo = memo(function EmployeeRow({
                     <span
                         className={cn(
                             "text-[10px] font-medium tabular-nums shrink-0",
-                            hoursColor
+                            hoursColor,
                         )}
                     >
                         {scheduled}/{required}h

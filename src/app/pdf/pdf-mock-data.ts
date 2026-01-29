@@ -1,5 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { SchedulePDFData } from "@/components/features/schedule/components/pdf";
 
+// Nieużywane obecnie, ale może być przydatne w przyszłości
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const generate160hShifts = (employees: any[]) => {
     const shifts: any[] = [];
     const workingDaysCount = 20; // 20 dni * 8h = 160h
@@ -119,7 +122,8 @@ export const MOCK_DATA: SchedulePDFData = {
             first_name: "Robert",
             last_name: "Stępień",
             color: "#2dd4bf",
-        } as any, {
+        } as any,
+        {
             id: "1",
             first_name: "Anna",
             last_name: "Kowalska",
@@ -196,7 +200,8 @@ export const MOCK_DATA: SchedulePDFData = {
             first_name: "Robert",
             last_name: "Stępień",
             color: "#2dd4bf",
-        } as any, {
+        } as any,
+        {
             id: "1",
             first_name: "Anna",
             last_name: "Kowalska",

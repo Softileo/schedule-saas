@@ -472,7 +472,7 @@ export function useScheduleViolations({
         );
 
         return uniqueResult;
-    }, [employees, activeShifts, absences]);
+    }, [employees, activeShifts, absences, shiftTemplates]);
 
     return violations;
 }

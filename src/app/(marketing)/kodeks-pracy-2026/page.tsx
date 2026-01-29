@@ -1,5 +1,4 @@
 import { Metadata } from "next";
-import Link from "next/link";
 import {
     SEOPageLayout,
     UniversalHero,
@@ -10,15 +9,7 @@ import {
 import { generateBreadcrumbSchema } from "@/lib/seo/schemas";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-    Scale,
-    Clock,
-    Bed,
-    Timer,
-    Calculator,
-    BookOpen,
-    ArrowRight,
-} from "lucide-react";
+import { Scale, Clock, Bed, Timer } from "lucide-react";
 
 export const metadata: Metadata = {
     title: "Kodeks Pracy 2026 - aktualne przepisy o czasie pracy | Calenda",
