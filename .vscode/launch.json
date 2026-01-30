@@ -1,0 +1,88 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Cloud Run: Run/Debug Locally",
+            "type": "cloudcode.cloudrun",
+            "request": "launch",
+            "build": {
+                "docker": {
+                    "path": "python-scheduler/Dockerfile"
+                }
+            },
+            "image": "schedule-saas",
+            "service": {
+                "name": "schedule-saas",
+                "containerPort": 8080,
+                "resources": {
+                    "limits": {
+                        "memory": "256Mi"
+                    }
+                },
+                "environmentVariables": [
+                    {
+                        "name": "API_KEY",
+                        "value": "schedule-saas-local-dev-2026"
+                    }
+                ]
+            },
+            "target": {
+                "minikube": {}
+            },
+            "watch": true
+        },
+        {
+            "name": "Next.js: debug server-side",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "npm run dev",
+            "serverReadyAction": {
+                "pattern": "- Local:.+(https?://.+)",
+                "uriFormat": "%s",
+                "action": "debugWithChrome"
+            },
+            "env": {
+                "PYTHON_SCHEDULER_URL_DEV": "http://localhost:8080",
+                "PYTHON_SCHEDULER_API_KEY_DEV": "schedule-saas-local-dev-2026"
+            }
+        },
+        {
+            "name": "Next.js: debug client-side",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:3000"
+        },
+        {
+            "name": "Next.js: debug full stack",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "npm run dev",
+            "serverReadyAction": {
+                "pattern": "- Local:.+(https?://.+)",
+                "uriFormat": "%s",
+                "action": "debugWithChrome"
+            },
+            "console": "integratedTerminal",
+            "env": {
+                "NODE_ENV": "development",
+                "PYTHON_SCHEDULER_URL_DEV": "http://localhost:8080",
+                "PYTHON_SCHEDULER_API_KEY_DEV": "schedule-saas-local-dev-2026"
+            }
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Full Stack: Next.js + Python",
+            "configurations": [
+                "Cloud Run: Run/Debug Locally",
+                "Next.js: debug full stack"
+            ],
+            "stopAll": true,
+            "presentation": {
+                "hidden": false,
+                "group": "fullstack",
+                "order": 1
+            }
+        }
+    ]
+}

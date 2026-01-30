@@ -1,0 +1,111 @@
+{
+    "input": {
+        "year": 2026,
+        "month": 2,
+        "employees": [
+            {
+                "id": "emp1",
+                "name": "Jan Kowalski",
+                "email": "jan.kowalski@example.com",
+                "contract_type": "full-time",
+                "weekly_hours": 40,
+                "max_hours": 184,
+                "template_assignments": ["morning", "afternoon", "evening"],
+                "absences": []
+            },
+            {
+                "id": "emp2",
+                "name": "Anna Nowak",
+                "email": "anna.nowak@example.com",
+                "contract_type": "full-time",
+                "weekly_hours": 40,
+                "max_hours": 184,
+                "template_assignments": ["morning", "afternoon"],
+                "absences": [
+                    {
+                        "start_date": "2026-02-01",
+                        "end_date": "2026-02-01",
+                        "type": "urlop"
+                    }
+                ]
+            },
+            {
+                "id": "emp3",
+                "name": "Piotr Wiśniewski",
+                "email": "piotr.wisniewski@example.com",
+                "contract_type": "part-time",
+                "weekly_hours": 30,
+                "max_hours": 138,
+                "template_assignments": ["afternoon", "evening"],
+                "absences": []
+            }
+        ],
+        "templates": [
+            {
+                "id": "morning",
+                "name": "Poranna (6-14)",
+                "start_time": "06:00",
+                "end_time": "14:00",
+                "break_minutes": 30,
+                "days_of_week": [
+                    "monday",
+                    "tuesday",
+                    "wednesday",
+                    "thursday",
+                    "friday",
+                    "saturday",
+                    "sunday"
+                ]
+            },
+            {
+                "id": "afternoon",
+                "name": "Popołudniowa (14-22)",
+                "start_time": "14:00",
+                "end_time": "22:00",
+                "break_minutes": 30,
+                "days_of_week": [
+                    "monday",
+                    "tuesday",
+                    "wednesday",
+                    "thursday",
+                    "friday",
+                    "saturday",
+                    "sunday"
+                ]
+            },
+            {
+                "id": "evening",
+                "name": "Wieczorna (22-6)",
+                "start_time": "22:00",
+                "end_time": "06:00",
+                "break_minutes": 30,
+                "days_of_week": [
+                    "monday",
+                    "tuesday",
+                    "wednesday",
+                    "thursday",
+                    "friday",
+                    "saturday",
+                    "sunday"
+                ]
+            }
+        ],
+        "settings": {
+            "work_days_per_week": 5,
+            "enforce_daily_rest": true,
+            "enforce_weekly_rest": true,
+            "max_consecutive_work_days": 6,
+            "min_staff_per_shift": 1,
+            "max_sunday_shifts_per_month": 2,
+            "balance_shift_distribution": true
+        },
+        "work_days": [],
+        "saturday_days": [],
+        "trading_sundays": [],
+        "holidays": []
+    },
+    "config": {
+        "useORTools": true,
+        "timeoutSeconds": 60
+    }
+}

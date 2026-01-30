@@ -1,0 +1,40 @@
+# Docker Compose dla lokalnego developmentu
+version: "3.8"
+
+services:
+    python-scheduler:
+        build:
+            context: ./python-scheduler
+            dockerfile: Dockerfile
+        container_name: python-scheduler-local
+        ports:
+            - "8080:8080"
+        environment:
+            - PORT=8080
+            - API_KEY=schedule-saas-local-dev-2026
+            - PYTHONUNBUFFERED=1
+        volumes:
+            - ./python-scheduler:/app
+            - /app/__pycache__
+        command: gunicorn --bind :8080 --workers 2 --threads 4 --timeout 120 --reload main:app
+        networks:
+            - schedule-network
+
+    # Opcjonalnie: Next.js też w Dockerze (jeśli potrzebne)
+    # nextjs:
+    #   build:
+    #     context: .
+    #     dockerfile: Dockerfile.nextjs
+    #   ports:
+    #     - "3000:3000"
+    #   environment:
+    #     - PYTHON_SCHEDULER_URL=http://python-scheduler:8080
+    #     - PYTHON_SCHEDULER_API_KEY=schedule-saas-local-dev-2026
+    #   depends_on:
+    #     - python-scheduler
+    #   networks:
+    #     - schedule-network
+
+networks:
+    schedule-network:
+        driver: bridge

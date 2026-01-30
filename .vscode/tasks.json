@@ -1,0 +1,51 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "docker-compose",
+            "label": "docker-compose-up",
+            "command": "up",
+            "dockerCompose": {
+                "up": {
+                    "detached": true,
+                    "build": true,
+                    "services": ["python-scheduler"]
+                },
+                "files": ["${workspaceFolder}/docker-compose.yml"]
+            }
+        },
+        {
+            "type": "docker-compose",
+            "label": "docker-compose-down",
+            "command": "down",
+            "dockerCompose": {
+                "down": {
+                    "removeVolumes": true
+                },
+                "files": ["${workspaceFolder}/docker-compose.yml"]
+            }
+        },
+        {
+            "type": "shell",
+            "label": "Start Local Python Scheduler",
+            "command": "docker-compose up -d python-scheduler",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            }
+        },
+        {
+            "type": "shell",
+            "label": "Stop Local Python Scheduler",
+            "command": "docker-compose down",
+            "problemMatcher": []
+        },
+        {
+            "type": "shell",
+            "label": "Deploy to Cloud Run",
+            "command": "cd python-scheduler && gcloud run deploy python-scheduler --source . --region europe-west1 --memory 1Gi --cpu 2",
+            "problemMatcher": []
+        }
+    ]
+}

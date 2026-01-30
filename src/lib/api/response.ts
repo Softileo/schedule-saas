@@ -53,6 +53,7 @@ export const ErrorCodes = {
     // Server
     INTERNAL_ERROR: "INTERNAL_ERROR",
     DATABASE_ERROR: "DATABASE_ERROR",
+    SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
 
     // Business logic
     BUSINESS_RULE_VIOLATION: "BUSINESS_RULE_VIOLATION",
@@ -65,7 +66,7 @@ export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
  */
 export function apiSuccess<T>(
     data: T,
-    message?: string
+    message?: string,
 ): NextResponse<ApiSuccessResponse<T>> {
     return NextResponse.json({
         success: true,
@@ -82,7 +83,7 @@ export function apiError(
     message: string,
     status: number = 400,
     details?: unknown,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
 ): NextResponse<ApiErrorResponse> {
     const errorBody: ApiErrorResponse["error"] = {
         code,
@@ -98,7 +99,7 @@ export function apiError(
             success: false,
             error: errorBody,
         },
-        { status, headers }
+        { status, headers },
     );
 }
 
@@ -118,7 +119,7 @@ export const ApiErrors = {
         return apiError(
             ErrorCodes.NOT_FOUND,
             message || `${resource} nie został znaleziony`,
-            404
+            404,
         );
     },
 
@@ -131,7 +132,7 @@ export const ApiErrors = {
             ErrorCodes.RATE_LIMITED,
             "Zbyt wiele żądań. Spróbuj ponownie później.",
             429,
-            { retryAfter: retryAfterSeconds }
+            { retryAfter: retryAfterSeconds },
         );
         response.headers.set("Retry-After", retryAfterSeconds.toString());
         return response;
@@ -150,7 +151,7 @@ export const ApiErrors = {
             ErrorCodes.BUSINESS_RULE_VIOLATION,
             message,
             422,
-            details
+            details,
         );
     },
 };

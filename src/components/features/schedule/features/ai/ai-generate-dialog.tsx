@@ -443,7 +443,7 @@ export function AIGenerateDialog({
                 {step === "loading" && (
                     <div className="flex flex-col items-center justify-center py-12 px-8 space-y-8">
                         <div className="relative">
-                            <GoogleSpinnerSVG size={56} stroke={4} />
+                            <GoogleSpinnerSVG size={56} stroke={3} />
                         </div>
 
                         <div className="w-full space-y-3">

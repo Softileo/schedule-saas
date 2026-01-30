@@ -352,29 +352,56 @@ export function OnboardingWizard() {
                 .select()
                 .single();
 
-            if (orgError) throw orgError;
+            if (orgError) {
+                logger.error("Error creating organization:", orgError);
+                throw new Error(
+                    orgError.message || "Błąd tworzenia organizacji",
+                );
+            }
+            if (!org) {
+                throw new Error("Nie udało się utworzyć organizacji");
+            }
 
             // 2. Add user as member
-            await supabase.from("organization_members").insert({
-                organization_id: org.id,
-                user_id: user.id,
-            });
+            const { error: memberError } = await supabase
+                .from("organization_members")
+                .insert({
+                    organization_id: org.id,
+                    user_id: user.id,
+                });
+
+            if (memberError) {
+                logger.error("Error adding member:", memberError);
+                throw new Error(
+                    memberError.message || "Błąd dodawania członka organizacji",
+                );
+            }
 
             // 3. Save opening hours and Sunday settings
-            await supabase.from("organization_settings").upsert({
-                organization_id: org.id,
-                opening_hours: openingHours as unknown as Json,
-                trading_sundays_mode: openingHours.sunday?.enabled
-                    ? sundayMode === "all"
-                        ? "all"
-                        : "custom"
-                    : "none",
-                custom_trading_sundays:
-                    openingHours.sunday?.enabled && sundayMode === "custom"
-                        ? customSundays
-                        : null,
-                enable_trading_sundays: openingHours.sunday?.enabled ?? false,
-            });
+            const { error: settingsError } = await supabase
+                .from("organization_settings")
+                .upsert({
+                    organization_id: org.id,
+                    opening_hours: openingHours as unknown as Json,
+                    trading_sundays_mode: openingHours.sunday?.enabled
+                        ? sundayMode === "all"
+                            ? "all"
+                            : "custom"
+                        : "none",
+                    custom_trading_sundays:
+                        openingHours.sunday?.enabled && sundayMode === "custom"
+                            ? customSundays
+                            : null,
+                    enable_trading_sundays:
+                        openingHours.sunday?.enabled ?? false,
+                });
+
+            if (settingsError) {
+                logger.error("Error saving settings:", settingsError);
+                throw new Error(
+                    settingsError.message || "Błąd zapisywania ustawień",
+                );
+            }
 
             // 4. Create employees
             const validEmployees = employees.filter(
@@ -399,7 +426,16 @@ export function OnboardingWizard() {
                     .select()
                     .single();
 
-                if (!empError && newEmp) {
+                if (empError) {
+                    logger.error(
+                        `Error creating employee ${emp.firstName} ${emp.lastName}:`,
+                        empError,
+                    );
+                    // Kontynuuj mimo błędu dla pojedynczego pracownika
+                    continue;
+                }
+
+                if (newEmp) {
                     employeeIdMap.set(emp.id, newEmp.id);
                 }
             }
@@ -440,12 +476,17 @@ export function OnboardingWizard() {
                         .select()
                         .single();
 
+                if (templateError) {
+                    logger.error(
+                        `Error creating template ${generatedName}:`,
+                        templateError,
+                    );
+                    // Kontynuuj mimo błędu dla pojedynczego szablonu
+                    continue;
+                }
+
                 // 6. Create template assignments
-                if (
-                    !templateError &&
-                    newTemplate &&
-                    template.assignedEmployees.length > 0
-                ) {
+                if (newTemplate && template.assignedEmployees.length > 0) {
                     const assignments = template.assignedEmployees
                         .map((localId) => employeeIdMap.get(localId))
                         .filter((id): id is string => id !== undefined)
@@ -480,7 +521,11 @@ export function OnboardingWizard() {
             router.refresh();
         } catch (error) {
             logger.error("Onboarding error:", error);
-            toast.error("Wystąpił błąd podczas zapisywania");
+            const errorMessage =
+                error instanceof Error
+                    ? error.message
+                    : "Wystąpił błąd podczas zapisywania";
+            toast.error(errorMessage);
         } finally {
             setIsLoading(false);
         }
