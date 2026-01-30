@@ -9,6 +9,12 @@
 import type { SchedulerInput, GeneratedShift } from "@/lib/scheduler/types";
 import type { ScheduleMetrics } from "@/lib/scheduler/evaluator";
 import { logger } from "@/lib/utils/logger";
+import {
+    transformInputForPython,
+    transformInputForCPSAT,
+    type PythonInput,
+    type CPSATInput,
+} from "@/lib/scheduler/data-transformer";
 
 // =============================================================================
 // KONFIGURACJA - RÓŻNE ŚRODOWISKA
@@ -53,6 +59,8 @@ export interface PythonScheduleMetrics {
     preferences_score: number;
     shift_type_balance: number;
     labor_code_score: number;
+    quality_percent?: number;
+    objective_value?: number;
 }
 
 interface OptimizeResponse {
@@ -99,106 +107,6 @@ function isPythonSchedulerEnabled(): boolean {
     return !!(PYTHON_SCHEDULER_URL && PYTHON_SCHEDULER_API_KEY);
 }
 
-/**
- * Transform Next.js SchedulerInput to Python API format
- */
-function transformInputForPython(input: SchedulerInput): unknown {
-    // Helper to get weekly hours based on employment type
-    const getWeeklyHours = (
-        employmentType: string | null,
-        customHours: number | null,
-    ): number => {
-        switch (employmentType) {
-            case "full":
-                return 40;
-            case "half":
-                return 20;
-            case "three_quarter":
-                return 30; // 3/4 × 40 = 30h
-            case "one_third":
-                return 13.33; // 1/3 × 40 ≈ 13.33h
-            case "custom":
-                return customHours || 20;
-            default:
-                return 40;
-        }
-    };
-
-    // Helper to convert time from HH:MM:SS to HH:MM (Python expects HH:MM)
-    const formatTime = (time: string): string => {
-        // If time is already in HH:MM format, return as is
-        if (time.split(":").length === 2) return time;
-        // If time is in HH:MM:SS format, strip seconds
-        return time.substring(0, 5);
-    };
-
-    return {
-        year: input.year,
-        month: input.month,
-        employees: input.employees.map((emp) => {
-            const weeklyHours = getWeeklyHours(
-                emp.employment_type,
-                emp.custom_hours,
-            );
-            return {
-                id: emp.id,
-                name: `${emp.first_name} ${emp.last_name}`,
-                email: emp.email || "",
-                contract_type: emp.employment_type || "full",
-                weekly_hours: weeklyHours,
-                max_hours: weeklyHours * 1.2, // 20% buffer for overtime
-                preferences: emp.preferences
-                    ? {
-                          preferred_days: emp.preferences.preferred_days || [],
-                          avoided_days: emp.preferences.unavailable_days || [],
-                          preferred_shift_types: [],
-                          max_hours_per_week:
-                              emp.preferences.max_hours_per_week || null,
-                          min_hours_per_week: null,
-                      }
-                    : null,
-                absences: (emp.absences || []).map((abs) => ({
-                    start_date: abs.start_date,
-                    end_date: abs.end_date,
-                    type: abs.absence_type,
-                })),
-                template_assignments: emp.templateAssignments || [],
-            };
-        }),
-        templates: input.templates.map((tmpl) => ({
-            id: tmpl.id,
-            name: tmpl.name,
-            start_time: formatTime(tmpl.start_time),
-            end_time: formatTime(tmpl.end_time),
-            break_minutes: tmpl.break_minutes || 0,
-            days_of_week: tmpl.applicable_days || [],
-            is_weekend: false, // Calculate based on applicable_days if needed
-            min_employees: tmpl.min_employees || 1,
-            max_employees: tmpl.max_employees || null,
-            color: tmpl.color || "#3b82f6",
-        })),
-        settings: {
-            work_days_per_week: 5,
-            enforce_daily_rest: true,
-            enforce_weekly_rest: true,
-            max_consecutive_work_days: 6,
-            min_staff_per_shift: input.settings.min_employees_per_shift || 1,
-            max_sunday_shifts_per_month: 2,
-            balance_shift_distribution: true,
-        },
-        holidays: input.holidays.map((hol) => ({
-            date: hol.date,
-            name: hol.localName || hol.name,
-        })),
-        work_days: input.workDays || [],
-        saturday_days: input.saturdayDays || [],
-        trading_sundays: input.tradingSundays || [],
-        template_assignments_map: input.templateAssignmentsMap
-            ? Object.fromEntries(input.templateAssignmentsMap)
-            : {},
-    };
-}
-
 async function callPythonAPI<T>(endpoint: string, body: unknown): Promise<T> {
     if (!isPythonSchedulerEnabled()) {
         throw new Error(
@@ -209,6 +117,16 @@ async function callPythonAPI<T>(endpoint: string, body: unknown): Promise<T> {
     const url = `${PYTHON_SCHEDULER_URL}${endpoint}`;
 
     logger.log(`🐍 Calling Python API: ${endpoint}`);
+
+    // ========== DETAILED REQUEST LOGGING ==========
+    console.log("\n" + "=".repeat(80));
+    console.log("📤 NEXT.JS → PYTHON API REQUEST");
+    console.log("=".repeat(80));
+    console.log(`Endpoint: ${endpoint}`);
+    console.log(`Full URL: ${url}`);
+    console.log("\n📦 Request Body:");
+    console.log(JSON.stringify(body, null, 2));
+    console.log("=".repeat(80) + "\n");
 
     const response = await fetch(url, {
         method: "POST",
@@ -245,7 +163,7 @@ export async function generateScheduleWithPython(
     metrics: PythonScheduleMetrics;
     improvement: number;
 }> {
-    const transformedInput = transformInputForPython(input);
+    const transformedInput: PythonInput = transformInputForPython(input);
 
     // Konwertuj config z camelCase na snake_case dla Python API
     const pythonConfig = config
@@ -292,7 +210,7 @@ export async function optimizeScheduleWithPython(
     metrics: PythonScheduleMetrics;
     improvement: number;
 }> {
-    const transformedInput = transformInputForPython(input);
+    const transformedInput: PythonInput = transformInputForPython(input);
 
     // Konwertuj config z camelCase na snake_case dla Python API
     const pythonConfig = config
@@ -345,7 +263,7 @@ export async function validateScheduleWithPython(
     isValid: boolean;
     metrics: PythonScheduleMetrics;
 }> {
-    const transformedInput = transformInputForPython(input);
+    const transformedInput: PythonInput = transformInputForPython(input);
 
     const response = await callPythonAPI<ValidateResponse>("/api/validate", {
         shifts,
@@ -366,7 +284,7 @@ export async function evaluateScheduleWithPython(
     shifts: GeneratedShift[],
     input: SchedulerInput,
 ): Promise<PythonScheduleMetrics> {
-    const transformedInput = transformInputForPython(input);
+    const transformedInput: PythonInput = transformInputForPython(input);
 
     const response = await callPythonAPI<EvaluateResponse>("/api/evaluate", {
         shifts,
@@ -428,65 +346,6 @@ export { isPythonSchedulerEnabled };
 // CP-SAT OPTIMIZER (NEW)
 // =============================================================================
 
-interface CPSATGenerateInput {
-    year: number;
-    month: number;
-    organization_settings: {
-        store_open_time?: string;
-        store_close_time?: string;
-        min_employees_per_shift?: number;
-        enable_trading_sundays?: boolean;
-    };
-    shift_templates: Array<{
-        id: string;
-        name: string;
-        start_time: string;
-        end_time: string;
-        break_minutes: number;
-        min_employees: number;
-        max_employees: number | null;
-        color?: string;
-        applicable_days?: string[];
-    }>;
-    employees: Array<{
-        id: string;
-        first_name: string;
-        last_name: string;
-        position?: string;
-        employment_type: string;
-        custom_hours?: number;
-        is_active: boolean;
-        color?: string;
-    }>;
-    employee_preferences?: Array<{
-        employee_id: string;
-        preferred_start_time?: string;
-        preferred_end_time?: string;
-        max_hours_per_day?: number;
-        max_hours_per_week?: number;
-        can_work_weekends?: boolean;
-        can_work_holidays?: boolean;
-        preferred_days?: number[];
-        unavailable_days?: number[];
-    }>;
-    employee_absences?: Array<{
-        employee_id: string;
-        start_date: string;
-        end_date: string;
-        absence_type: string;
-    }>;
-    scheduling_rules?: {
-        max_consecutive_days?: number;
-        min_daily_rest_hours?: number;
-        max_weekly_work_hours?: number;
-    };
-    trading_sundays?: Array<{
-        date: string;
-        is_active: boolean;
-    }>;
-    solver_time_limit?: number;
-}
-
 interface CPSATGenerateResponse {
     status: "SUCCESS" | "INFEASIBLE" | "ERROR";
     shifts?: Array<{
@@ -520,74 +379,6 @@ interface CPSATGenerateResponse {
 }
 
 /**
- * Konwertuje dane z SchedulerInput do formatu CP-SAT
- */
-function transformInputForCPSAT(input: SchedulerInput): CPSATGenerateInput {
-    return {
-        year: input.year,
-        month: input.month,
-        organization_settings: {
-            store_open_time: "08:00:00",
-            store_close_time: "20:00:00",
-            min_employees_per_shift:
-                input.settings.min_employees_per_shift || 1,
-            enable_trading_sundays: input.tradingSundays.length > 0,
-        },
-        shift_templates: input.templates.map((tmpl) => ({
-            id: tmpl.id,
-            name: tmpl.name,
-            start_time: formatTime(tmpl.start_time),
-            end_time: formatTime(tmpl.end_time),
-            break_minutes: tmpl.break_minutes || 0,
-            min_employees: tmpl.min_employees || 1,
-            max_employees: tmpl.max_employees || null,
-            color: tmpl.color,
-            applicable_days: tmpl.applicable_days || [],
-        })),
-        employees: input.employees.map((emp) => ({
-            id: emp.id,
-            first_name: emp.first_name,
-            last_name: emp.last_name,
-            position: emp.position,
-            employment_type: emp.employment_type || "full",
-            custom_hours: emp.custom_hours,
-            is_active: emp.is_active !== false,
-            color: emp.color,
-        })),
-        employee_preferences: input.employees
-            .filter((emp) => emp.preferences)
-            .map((emp) => ({
-                employee_id: emp.id,
-                preferred_start_time: emp.preferences?.preferred_start_time
-                    ? formatTime(emp.preferences.preferred_start_time)
-                    : undefined,
-                max_hours_per_week: emp.preferences?.max_hours_per_week,
-                can_work_weekends: emp.preferences?.can_work_weekends !== false,
-                preferred_days: emp.preferences?.preferred_days || [],
-                unavailable_days: emp.preferences?.unavailable_days || [],
-            })),
-        employee_absences: input.employees.flatMap((emp) =>
-            (emp.absences || []).map((abs) => ({
-                employee_id: emp.id,
-                start_date: abs.start_date,
-                end_date: abs.end_date,
-                absence_type: abs.absence_type,
-            })),
-        ),
-        scheduling_rules: {
-            max_consecutive_days: 6,
-            min_daily_rest_hours: 11,
-            max_weekly_work_hours: 48,
-        },
-        trading_sundays: input.tradingSundays.map((date) => ({
-            date,
-            is_active: true,
-        })),
-        solver_time_limit: 300,
-    };
-}
-
-/**
  * Generuje grafik z użyciem CP-SAT optimizer
  */
 export async function generateScheduleWithCPSAT(
@@ -598,7 +389,7 @@ export async function generateScheduleWithCPSAT(
     statistics: CPSATGenerateResponse["statistics"];
     status: string;
 }> {
-    const cpsatInput = transformInputForCPSAT(input);
+    const cpsatInput: CPSATInput = transformInputForCPSAT(input);
 
     if (timeLimit) {
         cpsatInput.solver_time_limit = timeLimit;

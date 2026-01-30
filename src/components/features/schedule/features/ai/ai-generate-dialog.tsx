@@ -207,8 +207,46 @@ export function AIGenerateDialog({
             const jsonResponse = await response.json();
 
             if (!response.ok) {
+                // Sprawdź czy to błąd INFEASIBLE z Python API
+                if (
+                    jsonResponse.status === "INFEASIBLE" &&
+                    jsonResponse.reasons
+                ) {
+                    const reasons = jsonResponse.reasons as string[];
+                    const suggestions = jsonResponse.suggestions as string[];
+
+                    // Parsuj główny powód (np. "Za mało godzin pracowniczych (480h) na pokrycie wymaganych zmian (2296h)")
+                    const mainReason = reasons[0] || "";
+                    const match = mainReason.match(
+                        /Za mało godzin pracowniczych \((\d+)h\) na pokrycie wymaganych zmian \((\d+)h\)/,
+                    );
+
+                    if (match) {
+                        const available = parseInt(match[1]);
+                        const required = parseInt(match[2]);
+                        const missingHours = required - available;
+                        const missingEmployees = Math.ceil(missingHours / 160); // ~160h/miesiąc per pracownik
+
+                        let userMessage = `🚫 Nie można wygenerować grafiku\n\n`;
+                        userMessage += `Masz za mało pracowników na ten miesiąc.\n\n`;
+                        userMessage += `📊 Sytuacja:\n`;
+                        userMessage += `• Dostępne godziny: ${available}h\n`;
+                        userMessage += `• Potrzebne godziny: ${required}h\n`;
+                        userMessage += `• Brakuje: ${missingHours}h (~${missingEmployees} pracowników)\n\n`;
+                        userMessage += `💡 Co możesz zrobić:\n\n`;
+                        userMessage += `1️⃣ Dodaj więcej pracowników w zakładce "Pracownicy"\n`;
+                        userMessage += `2️⃣ Zmniejsz "Min. pracowników" w szablonach zmian\n`;
+                        userMessage += `3️⃣ Usuń niepotrzebne szablony zmian\n`;
+                        userMessage += `4️⃣ Skróć godziny otwarcia w Ustawieniach`;
+
+                        throw new Error(userMessage);
+                    }
+                }
+
+                // Standardowa obsługa innych błędów
                 const err = jsonResponse.error;
-                const message = err?.message || "Wystąpił błąd";
+                const message =
+                    err?.message || jsonResponse.error || "Wystąpił błąd";
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const hint = (err?.details as any)?.hint;
                 const errorMsg = hint ? `${message}\n${hint}` : message;
@@ -472,9 +510,15 @@ export function AIGenerateDialog({
                 {step === "preview" && (
                     <div className="flex-1 overflow-hidden flex flex-col">
                         {error ? (
-                            <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
-                                <AlertCircle className="h-4 w-4 shrink-0" />
-                                {error}
+                            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                                <div className="flex items-start gap-3">
+                                    <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                                    <div className="flex-1">
+                                        <div className="text-sm text-red-900 whitespace-pre-line">
+                                            {error}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         ) : (
                             <div className="flex-1 overflow-auto">

@@ -117,7 +117,7 @@ def transform_nextjs_input(data: dict) -> dict:
             'last_name': last_name,
             'position': emp.get('position', 'Pracownik'),
             'employment_type': employment_type,
-            'custom_hours': emp.get('weekly_hours'),
+            'custom_hours': emp.get('custom_monthly_hours'),  # Godziny miesięczne dla custom etatu
             'is_active': True,
             'color': emp.get('color')
         })
@@ -273,6 +273,62 @@ def generate_schedule():
         print(f"📅 Generating schedule for: {data['year']}-{data['month']:02d}")
         print(f"👥 Employees: {len(data.get('employees', []))}")
         print(f"📋 Shift templates: {len(data.get('shift_templates', []))}")
+        
+        # SZCZEGÓŁOWE LOGOWANIE DANYCH
+        print(f"\n{'='*60}")
+        print("📊 SZCZEGÓŁOWE DANE WEJŚCIOWE:")
+        print(f"{'='*60}")
+        
+        # 1. Pracownicy
+        print(f"\n👥 PRACOWNICY ({len(data.get('employees', []))}):")
+        for i, emp in enumerate(data.get('employees', []), 1):
+            name = f"{emp.get('first_name', '')} {emp.get('last_name', '')}"
+            emp_type = emp.get('employment_type', 'full')
+            custom_h = emp.get('custom_hours')
+            print(f"  {i}. {name[:30]:30s} | Typ: {emp_type:12s} | Custom: {custom_h}")
+        
+        # 2. Szablony zmian
+        print(f"\n📋 SZABLONY ZMIAN ({len(data.get('shift_templates', []))}):")
+        for i, tmpl in enumerate(data.get('shift_templates', []), 1):
+            name = tmpl.get('name', 'Unknown')
+            start = tmpl.get('start_time', '??:??')
+            end = tmpl.get('end_time', '??:??')
+            min_emp = tmpl.get('min_employees', 1)
+            max_emp = tmpl.get('max_employees', 'NULL')
+            print(f"  {i}. {name[:20]:20s} | {start}-{end} | Min: {min_emp} | Max: {max_emp}")
+        
+        # 3. Ustawienia organizacji
+        org_set = data.get('organization_settings', {})
+        print(f"\n⚙️  USTAWIENIA ORGANIZACJI:")
+        print(f"  • Niedziele handlowe: {org_set.get('enable_trading_sundays', False)}")
+        print(f"  • Min pracowników/zmianę: {org_set.get('min_employees_per_shift', 'N/A')}")
+        
+        # 4. Reguły planowania
+        rules = data.get('scheduling_rules', {})
+        print(f"\n📏 REGUŁY PLANOWANIA:")
+        print(f"  • Max godzin/tydzień: {rules.get('max_weekly_work_hours', 48)}h")
+        print(f"  • Min odpoczynek: {rules.get('min_daily_rest_hours', 11)}h")
+        print(f"  • Max dni z rzędu: {rules.get('max_consecutive_days', 6)}")
+        
+        # 5. Norma miesięczna
+        monthly_norm = data.get('monthly_hours_norm')
+        print(f"\n⏰ NORMA MIESIĘCZNA: {monthly_norm}h")
+        
+        # 6. Nieobecności
+        absences = data.get('employee_absences', [])
+        print(f"\n🚫 NIEOBECNOŚCI: {len(absences)}")
+        for i, abs in enumerate(absences[:5], 1):  # Pokaż max 5
+            print(f"  {i}. Employee: {abs.get('employee_id', 'N/A')[:12]} | {abs.get('start_date')} → {abs.get('end_date')}")
+        if len(absences) > 5:
+            print(f"  ... i {len(absences) - 5} więcej")
+        
+        # 7. Niedziele handlowe
+        trading_sun = data.get('trading_sundays', [])
+        print(f"\n📅 NIEDZIELE HANDLOWE: {len(trading_sun)}")
+        for ts in trading_sun:
+            print(f"  • {ts.get('date')} - aktywna: {ts.get('is_active', True)}")
+        
+        print(f"\n{'='*60}\n")
         print(f"{'='*80}\n")
         
         # Call optimizer
