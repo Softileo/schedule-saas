@@ -1,0 +1,147 @@
+
+================================================================================
+  🚀 CP-SAT OPTIMIZER - COMPREHENSIVE TEST SUITE
+================================================================================
+
+🔍 Checking Python Scheduler availability...
+✅ Python Scheduler is healthy
+   Version: 2.0.0-cpsat
+   Service: calenda-schedule-python-scheduler
+
+✅ Python Scheduler is ready!
+
+
+================================================================================
+  SCENARIUSZ 1: Prosty Sklep Detaliczny
+================================================================================
+
+📊 Testing: Scenariusz 1
+   Year/Month: 2026-02
+   Employees: 5
+   Shift Templates: 2
+   Absences: 1
+   Time Limit: 180s
+
+⏱️  Request completed in 0.10s
+📡 HTTP Status: 200
+
+🎯 Status: SUCCESS
+✅ SUKCES!
+   • Wygenerowano zmian: 80
+   • Czas solvera: 0.04s
+   • Wartość funkcji celu: 3800.0
+   • Zmiennych decyzyjnych: 190
+   • Ograniczeń twardych: 282
+
+   📈 Rozkład zmian na pracownika:
+      • Anna Manager                  : 20 zmian
+      • Jan Kowalski                  : 20 zmian
+      • Maria Nowak                   : 15 zmian
+      • Piotr Wiśniewski              : 10 zmian
+      • Zofia Kamińska                : 15 zmian
+
+   📅 Przykładowe zmiany (pierwsze 5):
+      • 2026-02-02: Anna Manager - Poranna (8-16) (08:00:00-16:00:00)
+      • 2026-02-03: Anna Manager - Poranna (8-16) (08:00:00-16:00:00)
+      • 2026-02-04: Anna Manager - Poranna (8-16) (08:00:00-16:00:00)
+      • 2026-02-05: Anna Manager - Poranna (8-16) (08:00:00-16:00:00)
+      • 2026-02-06: Anna Manager - Poranna (8-16) (08:00:00-16:00:00)
+
+================================================================================
+  SCENARIUSZ 2: Klinika Medyczna (24/5)
+================================================================================
+
+📊 Testing: Scenariusz 2
+   Year/Month: 2026-02
+   Employees: 8
+   Shift Templates: 3
+   Absences: 2
+   Time Limit: 240s
+
+⏱️  Request completed in 0.26s
+📡 HTTP Status: 200
+
+🎯 Status: SUCCESS
+✅ SUKCES!
+   • Wygenerowano zmian: 144
+   • Czas solvera: 0.14s
+   • Wartość funkcji celu: -5240.0
+   • Zmiennych decyzyjnych: 546
+   • Ograniczeń twardych: 808
+
+   📈 Rozkład zmian na pracownika:
+      • Dr Adam Kierownik             : 20 zmian
+      • Dr Barbara Kowal              : 16 zmian
+      • Ewa Pielęgniarka              : 20 zmian
+      • Filip Nowicki                 : 16 zmian
+      • Gabriela Zając                : 20 zmian
+      • Hubert Asystent               : 20 zmian
+      • Irena Pomocnik                : 12 zmian
+      • Janusz Recepcja               : 20 zmian
+
+   📅 Przykładowe zmiany (pierwsze 5):
+      • 2026-02-02: Dr Adam Kierownik - Dzienna (10-18) (10:00:00-18:00:00)
+      • 2026-02-03: Dr Adam Kierownik - Dzienna (10-18) (10:00:00-18:00:00)
+      • 2026-02-05: Dr Adam Kierownik - Dzienna (10-18) (10:00:00-18:00:00)
+      • 2026-02-06: Dr Adam Kierownik - Dzienna (10-18) (10:00:00-18:00:00)
+      • 2026-02-07: Dr Adam Kierownik - Dzienna (10-18) (10:00:00-18:00:00)
+
+================================================================================
+  SCENARIUSZ 3: Restauracja (Zmiany przez północ)
+================================================================================
+
+📊 Testing: Scenariusz 3
+   Year/Month: 2026-02
+   Employees: 12
+   Shift Templates: 4
+   Absences: 3
+   Time Limit: 300s
+
+⏱️  Request completed in 13.23s
+📡 HTTP Status: 200
+
+🎯 Status: SUCCESS
+✅ SUKCES!
+   • Wygenerowano zmian: 256
+   • Czas solvera: 13.00s
+   • Wartość funkcji celu: 3400.0
+   • Zmiennych decyzyjnych: 1021
+   • Ograniczeń twardych: 1649
+
+   📈 Rozkład zmian na pracownika:
+      • Tomasz Szef Kuchni            : 24 zmian
+      • Katarzyna Kucharz             : 19 zmian
+      • Michał Kucharz                : 21 zmian
+      • Laura Kelnerka                : 23 zmian
+      • Marcin Kelner                 : 21 zmian
+      • Natalia Kelnerka              : 24 zmian
+      • Oskar Kelner                  : 24 zmian
+      • Paulina Barman                : 24 zmian
+      • Robert Barman                 : 24 zmian
+      • Sandra Zmywak                 : 12 zmian
+      • Tadeusz Zmywak                : 16 zmian
+      • Urszula Hostessa              : 24 zmian
+
+   📅 Przykładowe zmiany (pierwsze 5):
+      • 2026-02-02: Tomasz Szef Kuchni - Popołudnie (14-22) (14:00:00-22:00:00)
+      • 2026-02-03: Tomasz Szef Kuchni - Popołudnie (14-22) (14:00:00-22:00:00)
+      • 2026-02-04: Tomasz Szef Kuchni - Popołudnie (14-22) (14:00:00-22:00:00)
+      • 2026-02-05: Tomasz Szef Kuchni - Popołudnie (14-22) (14:00:00-22:00:00)
+      • 2026-02-06: Tomasz Szef Kuchni - Popołudnie (14-22) (14:00:00-22:00:00)
+
+================================================================================
+  📊 PODSUMOWANIE TESTÓW
+================================================================================
+
+Pomyślnych testów: 3/3
+
+✅ PASS - Scenariusz 1
+         Shifts: 80, Solve time: 0.04s
+✅ PASS - Scenariusz 2
+         Shifts: 144, Solve time: 0.14s
+✅ PASS - Scenariusz 3
+         Shifts: 256, Solve time: 13.00s
+
+================================================================================
+🎉 WSZYSTKIE TESTY ZAKOŃCZONE SUKCESEM!
+================================================================================

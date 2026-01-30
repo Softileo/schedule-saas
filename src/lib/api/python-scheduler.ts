@@ -423,3 +423,225 @@ export async function checkPythonSchedulerHealth(): Promise<{
  * Sprawdza czy Python scheduler jest dostępny
  */
 export { isPythonSchedulerEnabled };
+
+// =============================================================================
+// CP-SAT OPTIMIZER (NEW)
+// =============================================================================
+
+interface CPSATGenerateInput {
+    year: number;
+    month: number;
+    organization_settings: {
+        store_open_time?: string;
+        store_close_time?: string;
+        min_employees_per_shift?: number;
+        enable_trading_sundays?: boolean;
+    };
+    shift_templates: Array<{
+        id: string;
+        name: string;
+        start_time: string;
+        end_time: string;
+        break_minutes: number;
+        min_employees: number;
+        max_employees: number | null;
+        color?: string;
+        applicable_days?: string[];
+    }>;
+    employees: Array<{
+        id: string;
+        first_name: string;
+        last_name: string;
+        position?: string;
+        employment_type: string;
+        custom_hours?: number;
+        is_active: boolean;
+        color?: string;
+    }>;
+    employee_preferences?: Array<{
+        employee_id: string;
+        preferred_start_time?: string;
+        preferred_end_time?: string;
+        max_hours_per_day?: number;
+        max_hours_per_week?: number;
+        can_work_weekends?: boolean;
+        can_work_holidays?: boolean;
+        preferred_days?: number[];
+        unavailable_days?: number[];
+    }>;
+    employee_absences?: Array<{
+        employee_id: string;
+        start_date: string;
+        end_date: string;
+        absence_type: string;
+    }>;
+    scheduling_rules?: {
+        max_consecutive_days?: number;
+        min_daily_rest_hours?: number;
+        max_weekly_work_hours?: number;
+    };
+    trading_sundays?: Array<{
+        date: string;
+        is_active: boolean;
+    }>;
+    solver_time_limit?: number;
+}
+
+interface CPSATGenerateResponse {
+    status: "SUCCESS" | "INFEASIBLE" | "ERROR";
+    shifts?: Array<{
+        employee_id: string;
+        employee_name: string;
+        date: string;
+        start_time: string;
+        end_time: string;
+        break_minutes: number;
+        template_id: string;
+        template_name: string;
+        color?: string;
+        notes?: string;
+    }>;
+    statistics?: {
+        status: string;
+        objective_value?: number;
+        solve_time_seconds: number;
+        total_shifts_assigned: number;
+        total_variables: number;
+        hard_constraints: number;
+        soft_constraints: number;
+        conflicts: number;
+        branches: number;
+    };
+    year?: number;
+    month?: number;
+    error?: string;
+    reasons?: string[];
+    suggestions?: string[];
+}
+
+/**
+ * Konwertuje dane z SchedulerInput do formatu CP-SAT
+ */
+function transformInputForCPSAT(input: SchedulerInput): CPSATGenerateInput {
+    return {
+        year: input.year,
+        month: input.month,
+        organization_settings: {
+            store_open_time: "08:00:00",
+            store_close_time: "20:00:00",
+            min_employees_per_shift:
+                input.settings.min_employees_per_shift || 1,
+            enable_trading_sundays: input.tradingSundays.length > 0,
+        },
+        shift_templates: input.templates.map((tmpl) => ({
+            id: tmpl.id,
+            name: tmpl.name,
+            start_time: formatTime(tmpl.start_time),
+            end_time: formatTime(tmpl.end_time),
+            break_minutes: tmpl.break_minutes || 0,
+            min_employees: tmpl.min_employees || 1,
+            max_employees: tmpl.max_employees || null,
+            color: tmpl.color,
+            applicable_days: tmpl.applicable_days || [],
+        })),
+        employees: input.employees.map((emp) => ({
+            id: emp.id,
+            first_name: emp.first_name,
+            last_name: emp.last_name,
+            position: emp.position,
+            employment_type: emp.employment_type || "full",
+            custom_hours: emp.custom_hours,
+            is_active: emp.is_active !== false,
+            color: emp.color,
+        })),
+        employee_preferences: input.employees
+            .filter((emp) => emp.preferences)
+            .map((emp) => ({
+                employee_id: emp.id,
+                preferred_start_time: emp.preferences?.preferred_start_time
+                    ? formatTime(emp.preferences.preferred_start_time)
+                    : undefined,
+                max_hours_per_week: emp.preferences?.max_hours_per_week,
+                can_work_weekends: emp.preferences?.can_work_weekends !== false,
+                preferred_days: emp.preferences?.preferred_days || [],
+                unavailable_days: emp.preferences?.unavailable_days || [],
+            })),
+        employee_absences: input.employees.flatMap((emp) =>
+            (emp.absences || []).map((abs) => ({
+                employee_id: emp.id,
+                start_date: abs.start_date,
+                end_date: abs.end_date,
+                absence_type: abs.absence_type,
+            })),
+        ),
+        scheduling_rules: {
+            max_consecutive_days: 6,
+            min_daily_rest_hours: 11,
+            max_weekly_work_hours: 48,
+        },
+        trading_sundays: input.tradingSundays.map((date) => ({
+            date,
+            is_active: true,
+        })),
+        solver_time_limit: 300,
+    };
+}
+
+/**
+ * Generuje grafik z użyciem CP-SAT optimizer
+ */
+export async function generateScheduleWithCPSAT(
+    input: SchedulerInput,
+    timeLimit?: number,
+): Promise<{
+    shifts: GeneratedShift[];
+    statistics: CPSATGenerateResponse["statistics"];
+    status: string;
+}> {
+    const cpsatInput = transformInputForCPSAT(input);
+
+    if (timeLimit) {
+        cpsatInput.solver_time_limit = timeLimit;
+    }
+
+    logger.log(
+        `🔧 Calling CP-SAT optimizer (time limit: ${timeLimit || 300}s)`,
+    );
+
+    const response = await callPythonAPI<CPSATGenerateResponse>(
+        "/api/generate",
+        cpsatInput,
+    );
+
+    if (response.status === "SUCCESS" && response.shifts) {
+        logger.log(
+            `✅ CP-SAT generation successful: ${response.shifts.length} shifts in ${response.statistics?.solve_time_seconds}s`,
+        );
+
+        // Konwertuj zmiany do formatu GeneratedShift
+        const shifts: GeneratedShift[] = response.shifts.map((shift) => ({
+            employee_id: shift.employee_id,
+            date: shift.date,
+            start_time: shift.start_time,
+            end_time: shift.end_time,
+            break_minutes: shift.break_minutes,
+            template_id: shift.template_id,
+            color: shift.color,
+            notes: shift.notes || undefined,
+        }));
+
+        return {
+            shifts,
+            statistics: response.statistics,
+            status: response.status,
+        };
+    } else if (response.status === "INFEASIBLE") {
+        logger.error(`❌ CP-SAT INFEASIBLE: ${response.reasons?.join(", ")}`);
+        throw new Error(
+            `Schedule is infeasible: ${response.reasons?.join(", ") || "Unknown reasons"}. Suggestions: ${response.suggestions?.join(", ") || "None"}`,
+        );
+    } else {
+        logger.error(`❌ CP-SAT ERROR: ${response.error}`);
+        throw new Error(response.error || "CP-SAT generation failed");
+    }
+}

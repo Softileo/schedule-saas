@@ -16,7 +16,7 @@ services:
         volumes:
             - ./python-scheduler:/app
             - /app/__pycache__
-        command: gunicorn --bind :8080 --workers 2 --threads 4 --timeout 120 --reload main:app
+        command: gunicorn --bind :8080 --workers 2 --threads 4 --timeout 300 --reload app:app
         networks:
             - schedule-network
 

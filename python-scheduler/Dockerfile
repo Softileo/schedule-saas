@@ -20,4 +20,4 @@ ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 
 # Run with gunicorn
-CMD exec gunicorn --bind :$PORT --workers 2 --threads 4 --timeout 120 main:app
+CMD exec gunicorn --bind :$PORT --workers 2 --threads 4 --timeout 300 app:app
