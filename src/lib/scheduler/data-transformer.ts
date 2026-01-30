@@ -215,7 +215,7 @@ export function getWeeklyHours(
 
 /**
  * Oblicza maksymalne godziny miesięczne dla pracownika
- * Bazuje na normie miesięcznej i typie zatrudnienia + 20% buffer
+ * Bazuje na normie miesięcznej i typie zatrudnienia
  */
 export function calculateMaxMonthlyHours(
     employmentType: string | null,
@@ -233,16 +233,16 @@ export function calculateMaxMonthlyHours(
         // Miesięczne godziny = norma × stosunek
         const customMonthlyHours = monthlyHoursNorm * weeklyRatio;
         return {
-            maxHours: customMonthlyHours * 1.2, // 20% buffer
+            maxHours: customMonthlyHours * 1,
             customMonthlyHours,
         };
     }
 
-    // Dla standardowych etatów: norma miesięczna * mnożnik + 20% buffer
+    // Dla standardowych etatów: norma miesięczna * mnożnik
     const multiplier =
         EMPLOYMENT_TYPE_MULTIPLIERS[employmentType || "full"] || 1.0;
     return {
-        maxHours: monthlyHoursNorm * multiplier * 1.2,
+        maxHours: monthlyHoursNorm * multiplier,
         customMonthlyHours: null,
     };
 }

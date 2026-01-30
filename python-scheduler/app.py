@@ -118,6 +118,7 @@ def transform_nextjs_input(data: dict) -> dict:
             'position': emp.get('position', 'Pracownik'),
             'employment_type': employment_type,
             'custom_hours': emp.get('custom_monthly_hours'),  # Godziny miesięczne dla custom etatu
+            'max_hours': emp.get('max_hours'),  # Maksymalne godziny (norma + buffer + możliwości)
             'is_active': True,
             'color': emp.get('color')
         })

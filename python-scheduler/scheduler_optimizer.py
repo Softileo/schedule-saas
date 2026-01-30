@@ -734,35 +734,49 @@ class ScheduleOptimizer:
         
         penalty_per_hour = 1000  # Waga kary za każdą godzinę odchylenia (zwiększona 10x!)
         
-        print("  ⚙️  Obliczam odliczenia za urlopy/nieobecności (rozkład czasu pracy):")
+        print("  ⚙️  Obliczam target hours z max_hours i odliczeniami za urlopy:")
         
         for emp_id, emp in self.employee_by_id.items():
             employment_type = emp.get('employment_type', 'full')
             
-            # Określ docelowe godziny
-            if employment_type == 'custom':
-                # Dla custom używamy custom_hours bezpośrednio
+            # NOWE PODEJŚCIE: używamy max_hours z Next.js i odejmujemy urlopy
+            max_hours_from_api = emp.get('max_hours')
+            
+            if max_hours_from_api is not None:
+                # Next.js przesłało max_hours - używamy tego jako bazy
+                print(f"    • {emp_id[:12]}: max_hours from API: {max_hours_from_api}h")
+                
+                # Oblicz odliczenie za urlopy
+                absence_deduction = self._calculate_absence_hours_deduction(emp_id, employment_type)
+                
+                # Target = max_hours - urlopy
+                target_hours = max_hours_from_api - absence_deduction
+                
+                print(f"      → Target po urlopach: {target_hours:.1f}h")
+                
+            elif employment_type == 'custom':
+                # Fallback: Dla custom używamy custom_hours bezpośrednio
                 target_hours = emp.get('custom_hours')
                 if target_hours is None:
                     print(f"    ⚠️ Pracownik {emp_id[:8]} ma custom etat bez custom_hours - pomijam")
                     continue
             elif monthly_hours_norm is not None:
-                # Użyj normy z API pomnożonej przez mnożnik etatu
+                # Fallback: Użyj normy z API pomnożonej przez mnożnik etatu
                 multiplier = etat_multipliers.get(employment_type, 1.0)
                 if multiplier is None:
                     multiplier = 1.0
                 target_hours = monthly_hours_norm * multiplier
+                
+                # Odjęcie godzin za urlopy (stary sposób)
+                absence_deduction = self._calculate_absence_hours_deduction(emp_id, employment_type)
+                target_hours = target_hours - absence_deduction
             else:
-                # Fallback na stałe wartości (gdyby API nie przesłało normy)
+                # Fallback na stałe wartości (gdyby API nie przesłało nic)
                 fallback_hours = {
                     'full': 160, 'half': 80, 'three_quarter': 120, 'one_third': 53
                 }
                 target_hours = fallback_hours.get(employment_type, 160)
-                print(f"    ⚠️ Brak monthly_hours_norm w API - używam fallback {target_hours}h dla {employment_type}")
-            
-            # Odjęcie godzin za urlopy/nieobecności (według faktycznego rozkładu)
-            absence_deduction = self._calculate_absence_hours_deduction(emp_id, employment_type)
-            target_hours = target_hours - absence_deduction
+                print(f"    ⚠️ Brak danych z API - używam fallback {target_hours}h dla {employment_type}")
             
             # Oblicz sumę minut przepracowanych w miesiącu
             employee_shifts = [
