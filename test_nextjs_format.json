@@ -29,7 +29,13 @@
                 "start_time": "08:00",
                 "end_time": "16:00",
                 "break_minutes": 30,
-                "days_of_week": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+                "days_of_week": [
+                    "monday",
+                    "tuesday",
+                    "wednesday",
+                    "thursday",
+                    "friday"
+                ],
                 "min_employees": 1,
                 "max_employees": 2,
                 "color": "#FF0000"
