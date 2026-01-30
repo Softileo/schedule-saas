@@ -30,7 +30,7 @@ class ScheduleOptimizer:
         self.shifts_vars = {}  # (employee_id, day, shift_template_id) -> BoolVar
         self.solver = cp_model.CpSolver()
         
-        # Ekstrakcja danych wejściowych
+       # Ekstrakcja danych wejściowych
         self.organization_settings = input_data.get('organization_settings', {})
         self.shift_templates = input_data.get('shift_templates', [])
         self.employees = input_data.get('employees', [])
@@ -151,6 +151,47 @@ class ScheduleOptimizer:
             # Zmiana przez północ (np. 22:00 - 06:00)
             return (24 * 60 - start_minutes) + end_minutes
     
+    def _calculate_quality_percent(self, objective_value: float, total_shifts: int) -> float:
+        """
+        Normalizuje wartość funkcji celu CP-SAT do procentu jakości 0-100%.
+        
+        Logika:
+        - objective_value > 0 = więcej nagród niż kar (dobra jakość)
+        - objective_value = 0 = neutralny (średnia jakość)
+        - objective_value < 0 = więcej kar niż nagród (słaba jakość)
+        
+        Normalizacja:
+        - Szacujemy maksymalną możliwą wartość na podstawie liczby zmian
+        - Każda zmiana może dawać max ~500 punktów nagrody (SC1-SC4)
+        - Mapujemy zakres [-max, +max] na [0%, 100%]
+        """
+        if total_shifts == 0:
+            return 0.0
+        
+        # Szacowany max bonus na zmianę (wszystkie soft constraints spełnione)
+        # SC1: ~0 (brak kar), SC2: ~50, SC3: ~200, SC4: ~0 (brak kar)
+        estimated_max_per_shift = 300
+        estimated_max = total_shifts * estimated_max_per_shift
+        
+        # Szacowane minimum (wszystkie kary)
+        estimated_min = -total_shifts * 500
+        
+        # Normalizacja do 0-100%
+        if estimated_max == estimated_min:
+            return 50.0
+        
+        # Mapuj objective_value na zakres 0-100%
+        # objective_value = estimated_min -> 0%
+        # objective_value = estimated_max -> 100%
+        normalized = ((objective_value - estimated_min) / (estimated_max - estimated_min)) * 100
+        
+        # Ogranicz do zakresu 0-100%
+        quality = max(0.0, min(100.0, normalized))
+        
+        print(f"  • Jakość grafiku: {quality:.1f}% (objective_value: {objective_value})")
+        
+        return quality
+    
     def create_decision_variables(self):
         """
         Krok 1: Tworzenie zmiennych decyzyjnych.
@@ -240,6 +281,12 @@ class ScheduleOptimizer:
         
         # HC6: Maksymalna ciągłość pracy
         self._add_max_consecutive_days_constraint()
+        
+        # HC7: Maksimum 48h/tydzień (Art. 131 § 1 KP)
+        self._add_weekly_hours_constraint()
+        
+        # HC8: Wyrównana obsada zmian (różnica max 2 pracowników)
+        self._add_balanced_shift_staffing_constraint()
         
         print(f"✅ Dodano {self.stats['hard_constraints']} ograniczeń twardych")
     
@@ -392,6 +439,80 @@ class ScheduleOptimizer:
         
         self.stats['hard_constraints'] += count
         print(f"  ✓ HC6: Max {max_consecutive} dni z rzędu ({count} ograniczeń)")
+    
+    def _add_weekly_hours_constraint(self):
+        """HC7: Maksimum 48 godzin pracy w tygodniu (Art. 131 § 1 KP)."""
+        count = 0
+        max_weekly_hours = self.scheduling_rules.get('max_weekly_work_hours', 48)
+        max_weekly_minutes = int(max_weekly_hours * 60)
+        
+        # Pobierz początek miesiąca i określ tygodnie
+        first_day = date(self.year, self.month, 1)
+        
+        for emp_id in self.employee_by_id.keys():
+            # Dla każdego tygodnia w miesiącu (7-dniowe okna)
+            for week_start in range(1, self.days_in_month + 1, 7):
+                week_end = min(week_start + 6, self.days_in_month)
+                week_days = range(week_start, week_end + 1)
+                
+                # Zbierz wszystkie zmiany dla pracownika w tym tygodniu wraz z czasem trwania
+                week_work_minutes = []
+                for (e_id, d, t_id), var in self.shifts_vars.items():
+                    if e_id == emp_id and d in week_days:
+                        template = self.template_by_id[t_id]
+                        duration = template['duration_minutes']
+                        week_work_minutes.append(var * duration)
+                
+                if week_work_minutes:
+                    # Suma godzin w tygodniu <= max_weekly_hours
+                    self.model.Add(sum(week_work_minutes) <= max_weekly_minutes)
+                    count += 1
+        
+        self.stats['hard_constraints'] += count
+        print(f"  ✓ HC7: Max {max_weekly_hours}h/tydzień ({count} ograniczeń)")
+    
+    def _add_balanced_shift_staffing_constraint(self):
+        """HC8: Wyrównana obsada zmian - różnica między zmianami max 2 pracowników."""
+        count = 0
+        max_staffing_diff = 2  # Maksymalna różnica obsady między zmianami w tym samym dniu
+        
+        for day in self.all_days:
+            # Zbierz zmiany dla tego dnia
+            day_template_counts = {}
+            
+            for template in self.shift_templates:
+                template_id = template['id']
+                
+                # Znajdź zmienne dla tej zmiany w tym dniu
+                shift_vars = [
+                    var for (e_id, d, t_id), var in self.shifts_vars.items()
+                    if d == day and t_id == template_id
+                ]
+                
+                if shift_vars:
+                    day_template_counts[template_id] = (shift_vars, template)
+            
+            # Jeśli jest więcej niż jedna zmiana w tym dniu, wyrównaj obsadę
+            if len(day_template_counts) >= 2:
+                templates_list = list(day_template_counts.items())
+                
+                for i in range(len(templates_list)):
+                    for j in range(i + 1, len(templates_list)):
+                        vars1, tmpl1 = templates_list[i][1]
+                        vars2, tmpl2 = templates_list[j][1]
+                        
+                        # Różnica obsady między zmianami <= max_staffing_diff
+                        count1 = sum(vars1)
+                        count2 = sum(vars2)
+                        
+                        # |count1 - count2| <= max_staffing_diff
+                        # Czyli: count1 - count2 <= max_staffing_diff AND count2 - count1 <= max_staffing_diff
+                        self.model.Add(count1 - count2 <= max_staffing_diff)
+                        self.model.Add(count2 - count1 <= max_staffing_diff)
+                        count += 2
+        
+        self.stats['hard_constraints'] += count
+        print(f"  ✓ HC8: Wyrównana obsada zmian ({count} ograniczeń)")
     
     def add_soft_constraints(self):
         """
@@ -657,9 +778,16 @@ class ScheduleOptimizer:
                 shifts_output.append(shift_record)
         
         # Statystyki
+        objective_value = self.solver.ObjectiveValue() if status in [cp_model.OPTIMAL, cp_model.FEASIBLE] else 0
+        
+        # Oblicz quality_percent - normalizuj objective_value do 0-100%
+        # objective_value to suma nagród (+) i kar (-), może być ujemny
+        quality_percent = self._calculate_quality_percent(objective_value, len(shifts_output))
+        
         statistics = {
             'status': status_name,
-            'objective_value': self.solver.ObjectiveValue() if status == cp_model.OPTIMAL else None,
+            'objective_value': objective_value,
+            'quality_percent': quality_percent,
             'solve_time_seconds': self.solver.WallTime(),
             'total_shifts_assigned': len(shifts_output),
             'total_variables': self.stats['total_variables'],

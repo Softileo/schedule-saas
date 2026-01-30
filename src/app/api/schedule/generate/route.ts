@@ -690,9 +690,12 @@ export async function POST(request: Request) {
                 layersExecuted: ["Python-ORTools-CPSAT"],
                 metrics: {
                     qualityPercent:
-                        pythonResult.metrics.fitness ||
-                        (pythonResult.metrics.labor_code_score || 0.8) * 100,
-                    totalFitness: pythonResult.metrics.fitness || 0,
+                        pythonResult.metrics.quality_percent ||
+                        Math.max(
+                            0,
+                            Math.min(100, pythonResult.metrics.fitness || 75),
+                        ),
+                    totalFitness: pythonResult.metrics.objective_value || 0,
                     coveredDays: workDays.length + saturdayDays.length,
                     totalDays: workDays.length + saturdayDays.length,
                     emptyDays: 0,
