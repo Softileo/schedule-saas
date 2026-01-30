@@ -135,7 +135,11 @@ def transform_nextjs_input(data: dict) -> dict:
             })
         
         # Absences
-        for absence in emp.get('absences', []):
+        emp_absences_list = emp.get('absences', [])
+        print(f"  📋 Employee {emp.get('id', 'unknown')[:12]} - absences from Next.js: {len(emp_absences_list)}")
+        
+        for absence in emp_absences_list:
+            print(f"     → {absence.get('start_date')} to {absence.get('end_date')} (type: {absence.get('type', 'other')})")
             employee_absences.append({
                 'employee_id': emp.get('id'),
                 'start_date': absence.get('start_date'),
@@ -187,6 +191,10 @@ def transform_nextjs_input(data: dict) -> dict:
     
     # Solver time limit from config
     solver_time_limit = config.get('timeout_ms', 300000) // 1000  # Convert ms to seconds
+    
+    print(f"\n🔍 TRANSFORMED DATA - Total absences: {len(employee_absences)}")
+    for abs in employee_absences:
+        print(f"   → Employee: {abs.get('employee_id', 'N/A')[:12]} | {abs.get('start_date')} to {abs.get('end_date')} | Type: {abs.get('absence_type')}")
     
     return {
         'year': year,
@@ -257,6 +265,21 @@ def generate_schedule():
         if 'input' in data:
             # Next.js format - needs transformation
             print("📦 Detected Next.js format - transforming...")
+            
+            # LOGUJ SUROWE DANE Z NEXT.JS
+            input_raw = data.get('input', {})
+            print(f"\n🔍 RAW DATA FROM NEXT.JS:")
+            print(f"   • monthly_hours_norm: {input_raw.get('monthly_hours_norm', 'MISSING')}h")
+            print(f"   • workDays count: {len(input_raw.get('workDays', []))}")
+            print(f"   • saturdayDays count: {len(input_raw.get('saturdayDays', []))}")
+            print(f"   • tradingSundays count: {len(input_raw.get('tradingSundays', []))}")
+            print(f"   • holidays count: {len(input_raw.get('holidays', []))}")
+            
+            # Pokaż przykładowe workDays (pierwsze 5)
+            work_days = input_raw.get('workDays', [])
+            if work_days:
+                print(f"   • workDays sample (first 5): {work_days[:5]}")
+            
             data = transform_nextjs_input(data)
         
         # Validate required fields

@@ -619,6 +619,103 @@ class ScheduleOptimizer:
         else:
             print("⚠️  Brak składników funkcji celu")
     
+    def _calculate_average_shift_duration(self, emp_id: str) -> float:
+        """
+        Oblicza średnią długość zmian dla pracownika na podstawie dostępnych szablonów.
+        Używane do obliczenia odliczenia za urlopy.
+        
+        Returns:
+            Średnia długość zmiany w godzinach (fallback: 8.0h)
+        """
+        # Znajdź wszystkie szablony dostępne dla tego pracownika
+        available_templates = []
+        for template in self.shift_templates:
+            # Sprawdź czy istnieje choć jedna zmienna dla tego pracownika i szablonu
+            has_vars = any(
+                e_id == emp_id and t_id == template['id']
+                for (e_id, d, t_id) in self.shifts_vars.keys()
+            )
+            if has_vars:
+                available_templates.append(template)
+        
+        if not available_templates:
+            # Fallback: standardowe 8h
+            return 8.0
+        
+        # Oblicz średnią długość zmian (bez przerw - to czas faktyczny pracy)
+        total_minutes = sum(t['duration_minutes'] for t in available_templates)
+        avg_minutes = total_minutes / len(available_templates)
+        avg_hours = avg_minutes / 60.0
+        
+        return avg_hours
+    
+    def _calculate_absence_hours_deduction(self, emp_id: str, employment_type: str) -> float:
+        """
+        Oblicza ile godzin odjąć od target_hours z powodu urlopów/nieobecności.
+        
+        ZASADA (zgodnie z KP):
+        Urlop jest udzielany w godzinach odpowiadających dobowemu wymiarowi czasu pracy w danym dniu.
+        - Jeśli pracownik miał pracować 12h → odejmujemy 12h
+        - Jeśli pracownik miał pracować 8h → odejmujemy 8h
+        - Jeśli pracownik miał pracować 4h → odejmujemy 4h
+        
+        W momencie generowania grafiku nie znamy jeszcze rozkładu, więc:
+        1. Obliczamy średnią długość zmian z dostępnych szablonów dla tego pracownika
+        2. Mnożymy przez liczbę dni roboczych urlopu (Pn-Pt, bez świąt)
+        3. Skalujemy przez mnożnik etatu (dla niepełnych etatów)
+        
+        Args:
+            emp_id: ID pracownika
+            employment_type: Typ etatu ('full', 'half', etc.)
+            
+        Returns:
+            Liczba godzin do odjęcia od target_hours
+        """
+        # DEBUG: Sprawdź czy w ogóle są dane o nieobecnościach
+        total_absences_in_system = len(self.absence_set)
+        absences_for_emp = [(e, d) for (e, d) in self.absence_set if e == emp_id]
+        
+        print(f"      🔍 DEBUG {emp_id[:12]}: Total absences in system: {total_absences_in_system}, For this emp: {len(absences_for_emp)}")
+        if absences_for_emp:
+            print(f"         Absence days: {[d for (e, d) in absences_for_emp]}")
+        
+        # Mnożniki etatu (dla proporcji w niepełnych etatach)
+        etat_multipliers = {
+            'full': 1.0,
+            'three_quarter': 0.75,
+            'half': 0.5,
+            'one_third': 0.333,
+            'custom': 1.0  # Custom - nie skalujemy, bo custom_hours już uwzględnia proporcje
+        }
+        
+        multiplier = etat_multipliers.get(employment_type, 1.0)
+        
+        # Oblicz średnią długość zmiany dla tego pracownika
+        avg_shift_hours = self._calculate_average_shift_duration(emp_id)
+        
+        print(f"         Avg shift duration: {avg_shift_hours:.1f}h, Etat multiplier: {multiplier}")
+        
+        total_absence_days = 0
+        
+        # Policz dni robocze nieobecności w miesiącu (Pn-Pt, bez świąt)
+        for day in self.all_days:
+            if (emp_id, day) in self.absence_set:
+                current_date = date(self.year, self.month, day)
+                weekday = current_date.weekday()
+                
+                # Tylko dni robocze (Pn-Pt)
+                if weekday < 5:  # 0=Monday, 4=Friday
+                    # TODO: Ewentualnie dodać sprawdzanie świąt ustawowych
+                    total_absence_days += 1
+        
+        # Godziny do odjęcia = dni urlopu × średnia długość zmiany × mnożnik etatu
+        deduction_hours = total_absence_days * avg_shift_hours * multiplier
+        
+        if deduction_hours > 0:
+            print(f"    • {emp_id[:12]}: {total_absence_days} dni urlopu × {avg_shift_hours:.1f}h (śr. zmiana) × {multiplier} etatu = -{deduction_hours:.1f}h")
+        
+        return deduction_hours
+    
     def _add_employment_type_objective(self) -> List:
         """SC1: Kara za odchylenie od oczekiwanych godzin według etatu."""
         terms = []
@@ -636,6 +733,8 @@ class ScheduleOptimizer:
         }
         
         penalty_per_hour = 1000  # Waga kary za każdą godzinę odchylenia (zwiększona 10x!)
+        
+        print("  ⚙️  Obliczam odliczenia za urlopy/nieobecności (rozkład czasu pracy):")
         
         for emp_id, emp in self.employee_by_id.items():
             employment_type = emp.get('employment_type', 'full')
@@ -660,6 +759,10 @@ class ScheduleOptimizer:
                 }
                 target_hours = fallback_hours.get(employment_type, 160)
                 print(f"    ⚠️ Brak monthly_hours_norm w API - używam fallback {target_hours}h dla {employment_type}")
+            
+            # Odjęcie godzin za urlopy/nieobecności (według faktycznego rozkładu)
+            absence_deduction = self._calculate_absence_hours_deduction(emp_id, employment_type)
+            target_hours = target_hours - absence_deduction
             
             # Oblicz sumę minut przepracowanych w miesiącu
             employee_shifts = [

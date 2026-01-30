@@ -180,16 +180,23 @@ export function formatTime(time: string): string {
 }
 
 /**
- * Oblicza normę godzin dla pełnego etatu w danym miesiącu
- * Bazuje na liczbie dni roboczych + soboty + handlowe niedziele
+ * Oblicza miesięczną normę godzin pracy dla pełnego etatu.
+ *
+ * WAŻNE: Norma = tylko dni robocze (Pn-Pt) × 8h
+ * Soboty i niedziele handlowe NIE wliczają się do normy!
+ * Są dodatkowymi możliwościami pracy, ale nie częścią nominalnego wymiaru.
+ *
+ * Przykład: Styczeń 2026
+ * - 20 dni roboczych (Pn-Pt) → 160h normy
+ * - 5 sobót + 4 niedziele = 9 dni dodatkowych (możliwych, ale poza normą)
  */
 export function calculateMonthlyHoursNorm(
     workDaysCount: number,
     saturdayCount: number,
     tradingSundayCount: number,
 ): number {
-    // Każdy dzień roboczy = 8h dla pełnego etatu
-    return (workDaysCount + saturdayCount + tradingSundayCount) * 8;
+    // NORMA = tylko dni robocze (Pn-Pt) × 8h
+    return workDaysCount * 8;
 }
 
 /**
