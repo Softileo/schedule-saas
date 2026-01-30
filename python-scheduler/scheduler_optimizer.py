@@ -321,7 +321,7 @@ class ScheduleOptimizer:
         for day in self.all_days:
             for template in self.shift_templates:
                 template_id = template['id']
-                min_employees = template.get('min_employees', 1)
+                min_employees = template.get('min_employees',1)
                 max_employees = template.get('max_employees')
                 
                 # Znajdź wszystkie zmienne dla tej zmiany w tym dniu
@@ -565,8 +565,8 @@ class ScheduleOptimizer:
                 multiplier = etat_multipliers.get(employment_type, 1.0)
                 target_hours = monthly_hours_norm * multiplier
             
-            # Minimum to 25% docelowych godzin (bardzo elastyczne, ale wymusza jakieś przypisanie)
-            min_hours = target_hours * 0.25
+            # Minimum to 100% docelowych godzin (bardzo elastyczne, ale wymusza jakieś przypisanie)
+            min_hours = target_hours * 1
             min_minutes = int(min_hours * 60)
             
             # Zbierz wszystkie zmiany dla pracownika
@@ -597,8 +597,8 @@ class ScheduleOptimizer:
         objective_terms = []
         
         # SC1: Zgodność z etatem - kara za odchylenie od docelowych godzin
-        penalty_terms_etat = self._add_employment_type_objective()
-        objective_terms.extend(penalty_terms_etat)
+        # penalty_terms_etat = self._add_employment_type_objective()
+        # objective_terms.extend(penalty_terms_etat)
         
         # SC2: Preferencje godzinowe - nagroda za zgodność
         reward_terms_prefs = self._add_time_preferences_objective()
