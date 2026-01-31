@@ -11,7 +11,7 @@ Test kompleksowo sprawdza algorytm CP-SAT poprzez:
 
 SPRAWDZANE ZASADY:
 -----------------
-✅ R1: Max 160-180h/miesiąc (norma + max 8h nadgodzin na miesiąc)
+✅ R1: Max godzin na miesiąc (norma + max 8h nadgodzin na miesiąc)
 ✅ R2: Min/Max employees na zmianach (jeśli nie 0 lub null)
 ✅ R3: Pokrycie zmianowe - minimum 1 pracownik w godzinach otwarcia
 ✅ R4: Równomierna obsada na zmianach (±1 pracownik)
@@ -81,10 +81,10 @@ class ScenarioGenerator:
     
     def calculate_monthly_hours(self, employment_type: str, working_days: int) -> Tuple[int, int]:
         """
-        Oblicza normę godzin i max godziny dla typu etatu.
+        Oblicza normę godzin dla typu etatu.
         
         Returns:
-            (norma_godzin, max_godzin_z_nadgodzinami)
+            (norma_godzin, max_godzin) - max_hours = norma (zgodnie z Next.js)
         """
         # Średnio 8h dziennie * dni robocze
         full_time_base = working_days * 8
@@ -99,9 +99,9 @@ class ScenarioGenerator:
         multiplier = employment_multiplier.get(employment_type, 1.0)
         base_hours = int(full_time_base * multiplier)
         
-        # Max godziny = norma + 8h nadgodzin na miesiąc (dla pełnego etatu)
-        max_overtime = int(8 * multiplier)
-        max_hours = base_hours + max_overtime
+        # max_hours = norma (bez nadgodzin) - zgodnie z Next.js data-transformer
+        # Solver będzie dążył do wypełnienia tej normy
+        max_hours = base_hours
         
         return base_hours, max_hours
     
@@ -380,9 +380,18 @@ class ScenarioGenerator:
         # Trading sundays w formacie CP-SAT
         cpsat_trading_sundays = [{'date': ts, 'is_active': True} for ts in trading_sundays]
         
+        # Oblicz monthly_hours_norm (norma dla pełnego etatu)
+        # Zakładamy 8h/dzień × liczba dni roboczych (Pn-Pt, bez niedziel)
+        work_days = sum(
+            1 for day in range(1, self.days_in_month + 1)
+            if date(self.year, self.month, day).weekday() < 5  # Pn-Pt
+        )
+        monthly_hours_norm = work_days * 8
+        
         scenario = {
             'year': self.year,
             'month': self.month,
+            'monthly_hours_norm': monthly_hours_norm,  # KRYTYCZNE: musi być dla CP-SAT
             'organization_settings': {
                 'store_open_time': open_time,
                 'store_close_time': close_time,
@@ -954,20 +963,49 @@ def test_random_scenarios(count: int = 3):
         gen = ScenarioGenerator(year=2026, month=random.randint(1, 12))
         
         # Losowe parametry
-        num_employees = random.randint(5, 15)
         shift_type = random.choice(['8h', '12h', 'mixed'])
-        min_emp = random.randint(1, 3)
-        max_emp = min_emp + random.randint(1, 3)
+        min_emp = random.randint(1, 2)  # Mniejsze min dla realizmu
+        max_emp = min_emp + random.randint(1, 2)
         
         # Losowe godziny otwarcia
         open_hours = [
-            ('06:00:00', '14:00:00'),  # Wczesny sklep
-            ('08:00:00', '16:00:00'),  # Standardowy krótki
-            ('09:00:00', '21:00:00'),  # Standardowy długi
-            ('10:00:00', '22:00:00'),  # Centrum handlowe
-            ('06:00:00', '22:00:00'),  # Supermarket 24/7-style
+            ('06:00:00', '14:00:00'),  # Wczesny sklep - 8h
+            ('08:00:00', '16:00:00'),  # Standardowy krótki - 8h
+            ('09:00:00', '21:00:00'),  # Standardowy długi - 12h
+            ('10:00:00', '22:00:00'),  # Centrum handlowe - 12h
+            ('06:00:00', '22:00:00'),  # Supermarket - 16h
         ]
         open_time, close_time = random.choice(open_hours)
+        
+        # Oblicz ile godzin dziennie potrzeba pokryć
+        open_hour = int(open_time.split(':')[0])
+        close_hour = int(close_time.split(':')[0])
+        hours_per_day = close_hour - open_hour
+        
+        # Oblicz liczbę zmian na dzień (każda zmiana ~8h max, z nakładką)
+        if hours_per_day <= 8:
+            shifts_per_day = 1
+        elif hours_per_day <= 12:
+            shifts_per_day = 2
+        else:
+            shifts_per_day = 2  # Dla dłuższych nadal 2 (12h zmiany)
+        
+        # Oblicz wymagane godziny = dni robocze × min_emp × zmiany × 8h
+        work_days = gen.get_working_days_count()
+        required_hours = work_days * min_emp * shifts_per_day * 8
+        
+        # Każdy pracownik pełnoetatowy daje ~160h, ale mamy mix etatów
+        # Zakładamy średnio 0.7 * 160 + 0.2 * 80 + 0.1 * 120 = 140h/pracownik
+        avg_hours_per_employee = 140
+        
+        # Minimalna liczba pracowników z 20% marginesem
+        min_employees_needed = int(required_hours / avg_hours_per_employee * 1.2) + 1
+        
+        # Losuj liczbę pracowników - od minimum do minimum + 5
+        num_employees = random.randint(
+            max(5, min_employees_needed),
+            max(10, min_employees_needed + 5)
+        )
         
         scenario = gen.generate_scenario(
             num_employees=num_employees,

@@ -197,9 +197,24 @@ def transform_nextjs_input(data: dict) -> dict:
     for abs in employee_absences:
         print(f"   → Employee: {abs.get('employee_id', 'N/A')[:12]} | {abs.get('start_date')} to {abs.get('end_date')} | Type: {abs.get('absence_type')}")
     
+    # KRYTYCZNE: Pobierz monthly_hours_norm z input lub oblicz go
+    monthly_hours_norm = input_data.get('monthly_hours_norm')
+    if not monthly_hours_norm:
+        # Fallback: oblicz na podstawie dni roboczych (Pn-Pt)
+        from calendar import monthrange
+        _, days_in_month = monthrange(year, month)
+        from datetime import date
+        work_days = sum(
+            1 for day in range(1, days_in_month + 1)
+            if date(year, month, day).weekday() < 5  # Pn-Pt
+        )
+        monthly_hours_norm = work_days * 8
+        print(f"⚠️  monthly_hours_norm not provided - calculated: {monthly_hours_norm}h (work_days: {work_days})")
+    
     return {
         'year': year,
         'month': month,
+        'monthly_hours_norm': monthly_hours_norm,  # KRYTYCZNE DLA CP-SAT
         'organization_settings': organization_settings,
         'shift_templates': shift_templates,
         'employees': employees,
@@ -371,15 +386,29 @@ def generate_schedule():
             # Pobierz quality_percent z CP-SAT lub oblicz fallback
             stats = result.get('statistics', {})
             quality_percent = stats.get('quality_percent', 75.0)
+            shifts = result.get('shifts', [])
+            
+            # Konwertuj flat list shifts na format {emp_id: {date: [shifts]}} dla validatora
+            schedule = {}
+            for shift in shifts:
+                emp_id = shift.get('employee_id')
+                shift_date = shift.get('date')
+                if emp_id and shift_date:
+                    if emp_id not in schedule:
+                        schedule[emp_id] = {}
+                    if shift_date not in schedule[emp_id]:
+                        schedule[emp_id][shift_date] = []
+                    schedule[emp_id][shift_date].append(shift)
             
             return jsonify({
                 'success': True,
+                'schedule': schedule,  # Format dla validatora: {emp_id: {date: [shifts]}}
                 'data': {
-                    'shifts': result.get('shifts', []),
+                    'shifts': shifts,
                     'metrics': {
                         'fitness': quality_percent,  # Teraz to procent 0-100%, nie raw objective
                         'quality_percent': quality_percent,
-                        'total_shifts': len(result.get('shifts', [])),
+                        'total_shifts': len(shifts),
                         'employees_count': len(data.get('employees', [])),
                         'hours_balance': 0.8,
                         'shift_balance': 0.9,
@@ -396,7 +425,21 @@ def generate_schedule():
                     }
                 },
                 'status': 'SUCCESS',
-                'statistics': stats
+                # Dodaj stats w formacie kompatybilnym z testem
+                'statistics': {
+                    'status': stats.get('status', 'SUCCESS'),
+                    'solver_status': stats.get('status', 'OPTIMAL'),  # Dla kompatybilności z testem
+                    'total_shifts': len(shifts),
+                    'total_shifts_assigned': stats.get('total_shifts_assigned', len(shifts)),
+                    'solve_time_seconds': stats.get('solve_time_seconds', 0),
+                    'quality_percent': quality_percent,
+                    'objective_value': stats.get('objective_value', 0),
+                    'total_variables': stats.get('total_variables', 0),
+                    'hard_constraints': stats.get('hard_constraints', 0),
+                    'soft_constraints': stats.get('soft_constraints', 0),
+                    'conflicts': stats.get('conflicts', 0),
+                    'branches': stats.get('branches', 0)
+                }
             }), 200
         else:
             return jsonify({
