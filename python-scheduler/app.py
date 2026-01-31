@@ -169,8 +169,8 @@ def transform_nextjs_input(data: dict) -> dict:
     # Settings
     settings = input_data.get('settings', {})
     organization_settings = {
-        'store_open_time': '08:00:00',
-        'store_close_time': '20:00:00',
+        'store_open_time': settings.get('store_open_time', '08:00:00'),
+        'store_close_time': settings.get('store_close_time', '20:00:00'),
         'min_employees_per_shift': settings.get('min_staff_per_shift', 1),
         'enable_trading_sundays': len(input_data.get('trading_sundays', [])) > 0
     }

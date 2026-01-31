@@ -57,6 +57,8 @@ export interface PythonInput {
     employees: PythonEmployee[];
     templates: PythonTemplate[];
     settings: {
+        store_open_time?: string;
+        store_close_time?: string;
         work_days_per_week: number;
         enforce_daily_rest: boolean;
         enforce_weekly_rest: boolean;
@@ -386,6 +388,12 @@ export function transformInputForPython(input: SchedulerInput): PythonInput {
         ),
         templates: input.templates.map(transformTemplateToPython),
         settings: {
+            store_open_time: input.settings.store_open_time
+                ? formatTime(input.settings.store_open_time)
+                : "08:00",
+            store_close_time: input.settings.store_close_time
+                ? formatTime(input.settings.store_close_time)
+                : "20:00",
             work_days_per_week: 5,
             enforce_daily_rest: true,
             enforce_weekly_rest: true,

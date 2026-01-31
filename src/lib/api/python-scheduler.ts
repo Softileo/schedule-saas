@@ -165,6 +165,24 @@ export async function generateScheduleWithPython(
 }> {
     const transformedInput: PythonInput = transformInputForPython(input);
 
+    // Log godzin otwarcia sklepu
+    console.log(
+        "\n🕐 === GODZINY OTWARCIA SKLEPU (generateScheduleWithPython) ===",
+    );
+    console.log(
+        `Original input.settings.store_open_time: ${input.settings.store_open_time}`,
+    );
+    console.log(
+        `Original input.settings.store_close_time: ${input.settings.store_close_time}`,
+    );
+    console.log(
+        `Transformed settings.store_open_time: ${transformedInput.settings.store_open_time}`,
+    );
+    console.log(
+        `Transformed settings.store_close_time: ${transformedInput.settings.store_close_time}`,
+    );
+    console.log("=" + "=".repeat(60) + "\n");
+
     // Konwertuj config z camelCase na snake_case dla Python API
     const pythonConfig = config
         ? {
@@ -211,6 +229,24 @@ export async function optimizeScheduleWithPython(
     improvement: number;
 }> {
     const transformedInput: PythonInput = transformInputForPython(input);
+
+    // Log godzin otwarcia sklepu
+    console.log(
+        "\n🕐 === GODZINY OTWARCIA SKLEPU (optimizeScheduleWithPython) ===",
+    );
+    console.log(
+        `Original input.settings.store_open_time: ${input.settings.store_open_time}`,
+    );
+    console.log(
+        `Original input.settings.store_close_time: ${input.settings.store_close_time}`,
+    );
+    console.log(
+        `Transformed settings.store_open_time: ${transformedInput.settings.store_open_time}`,
+    );
+    console.log(
+        `Transformed settings.store_close_time: ${transformedInput.settings.store_close_time}`,
+    );
+    console.log("=" + "=".repeat(60) + "\n");
 
     // Konwertuj config z camelCase na snake_case dla Python API
     const pythonConfig = config
@@ -394,6 +430,24 @@ export async function generateScheduleWithCPSAT(
     if (timeLimit) {
         cpsatInput.solver_time_limit = timeLimit;
     }
+
+    // Log godzin otwarcia sklepu
+    console.log(
+        "\n🕐 === GODZINY OTWARCIA SKLEPU (generateScheduleWithCPSAT) ===",
+    );
+    console.log(
+        `Original input.settings.store_open_time: ${input.settings.store_open_time}`,
+    );
+    console.log(
+        `Original input.settings.store_close_time: ${input.settings.store_close_time}`,
+    );
+    console.log(
+        `CPSAT organization_settings.store_open_time: ${cpsatInput.organization_settings.store_open_time}`,
+    );
+    console.log(
+        `CPSAT organization_settings.store_close_time: ${cpsatInput.organization_settings.store_close_time}`,
+    );
+    console.log("=" + "=".repeat(60) + "\n");
 
     logger.log(
         `🔧 Calling CP-SAT optimizer (time limit: ${timeLimit || 300}s)`,
