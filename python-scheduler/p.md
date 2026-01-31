@@ -1,0 +1,11 @@
+gcloud run deploy python-scheduler \
+  --image gcr.io/next-ecommerce-399010/python-scheduler \
+  --platform managed \
+  --region europe-west1 \
+  --allow-unauthenticated \
+  --set-env-vars API_KEY=schedule-saas-production-2026 \
+  --memory 512Mi \
+  --cpu 2 \
+  --timeout 300 \
+  --max-instances 10 \
+  --min-instances 0
