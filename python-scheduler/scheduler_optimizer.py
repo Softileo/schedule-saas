@@ -615,16 +615,27 @@ class ScheduleOptimizer:
         print(f"  ✓ HC9: Pokrycie dni roboczych ({count} dni wymaga obsady)")
     
     def _add_max_monthly_hours_constraint(self):
-        """HC10: Maksymalna liczba godzin miesięcznie dla pracownika."""
+        """HC10: Maksymalna liczba godzin miesięcznie dla pracownika.
+        
+        KRYTYCZNE: Odejmujemy urlopy od max_hours!
+        Jeśli pracownik ma 160h max_hours i 2 dni urlopu (16h),
+        to może przepracować maksymalnie 160h - 16h = 144h.
+        """
         count = 0
         
         for emp_id, emp in self.employee_by_id.items():
+            employment_type = emp.get('employment_type', 'full')
+            
             # Pobierz max_hours z danych pracownika
             max_hours = emp.get('max_hours')
             
             if max_hours is None:
                 # Jeśli nie ma max_hours, użyj monthly_hours_norm jako fallback
                 max_hours = self.data.get('monthly_hours_norm', 180)
+            
+            # KLUCZOWE: Odejmij urlopy od max_hours!
+            absence_deduction = self._calculate_absence_hours_deduction(emp_id, employment_type)
+            adjusted_max_hours = max(0, max_hours - absence_deduction)
             
             # Znajdź wszystkie zmiany tego pracownika
             employee_shifts = [
@@ -639,15 +650,18 @@ class ScheduleOptimizer:
             # Suma minut = suma(var * duration_minutes)
             total_minutes = sum(var * duration for var, duration in employee_shifts)
             
-            # Max minuty
-            max_minutes = int(max_hours * 60)
+            # Max minuty (po odjęciu urlopów)
+            max_minutes = int(adjusted_max_hours * 60)
             
-            # HARD CONSTRAINT: suma minut <= max_hours * 60
+            # HARD CONSTRAINT: suma minut <= adjusted_max_hours * 60
             self.model.Add(total_minutes <= max_minutes)
             count += 1
+            
+            if absence_deduction > 0:
+                print(f"    • {emp_id[:12]}: max {adjusted_max_hours:.0f}h (było {max_hours:.0f}h - {absence_deduction:.0f}h urlop)")
         
         self.stats['hard_constraints'] += count
-        print(f"  ✓ HC10: Max godzin miesięcznie ({count} pracowników)")
+        print(f"  ✓ HC10: Max godzin miesięcznie ({count} pracowników, uwzględnia urlopy)")
 
     def add_soft_constraints(self):
         """
@@ -735,69 +749,37 @@ class ScheduleOptimizer:
         return avg_hours
     
     def _calculate_absence_hours_deduction(self, emp_id: str, employment_type: str) -> float:
-        """
-        Oblicza ile godzin odjąć od target_hours z powodu urlopów/nieobecności.
+        """Oblicza ile godzin odjąć od target_hours z powodu urlopów/nieobecności.
         
-        ZASADA (zgodnie z KP):
-        Urlop jest udzielany w godzinach odpowiadających dobowemu wymiarowi czasu pracy w danym dniu.
-        - Jeśli pracownik miał pracować 12h → odejmujemy 12h
-        - Jeśli pracownik miał pracować 8h → odejmujemy 8h
-        - Jeśli pracownik miał pracować 4h → odejmujemy 4h
+        NOWA LOGIKA (2026-01-31):
+        URLOP = ZAWSZE 8H za każdy dzień nieobecności!
+        Nie liczymy średniej długości zmian - zgodnie z Kodeksem Pracy.
         
-        W momencie generowania grafiku nie znamy jeszcze rozkładu, więc:
-        1. Obliczamy średnią długość zmian z dostępnych szablonów dla tego pracownika
-        2. Mnożymy przez liczbę dni roboczych urlopu (Pn-Pt, bez świąt)
-        3. Skalujemy przez mnożnik etatu (dla niepełnych etatów)
+        ZASADA:
+        - 1 dzień urlopu = 8h odliczenia od max_hours
+        - 3 dni urlopu = 24h odliczenia
+        - Prosty, przewidywalny system
+        - LICZYMY WSZYSTKIE DNI (również weekendy) - urlop to urlop!
         
         Args:
             emp_id: ID pracownika
-            employment_type: Typ etatu ('full', 'half', etc.)
+            employment_type: Typ etatu ('full', 'half', etc.) - NIE SKALUJEMY przez etat!
             
         Returns:
-            Liczba godzin do odjęcia od target_hours
+            Liczba godzin do odjęcia od target_hours (dni_urlopu × 8h)
         """
-        # DEBUG: Sprawdź czy w ogóle są dane o nieobecnościach
-        total_absences_in_system = len(self.absence_set)
-        absences_for_emp = [(e, d) for (e, d) in self.absence_set if e == emp_id]
-        
-        print(f"      🔍 DEBUG {emp_id[:12]}: Total absences in system: {total_absences_in_system}, For this emp: {len(absences_for_emp)}")
-        if absences_for_emp:
-            print(f"         Absence days: {[d for (e, d) in absences_for_emp]}")
-        
-        # Mnożniki etatu (dla proporcji w niepełnych etatach)
-        etat_multipliers = {
-            'full': 1.0,
-            'three_quarter': 0.75,
-            'half': 0.5,
-            'one_third': 0.333,
-            'custom': 1.0  # Custom - nie skalujemy, bo custom_hours już uwzględnia proporcje
-        }
-        
-        multiplier = etat_multipliers.get(employment_type, 1.0)
-        
-        # Oblicz średnią długość zmiany dla tego pracownika
-        avg_shift_hours = self._calculate_average_shift_duration(emp_id)
-        
-        print(f"         Avg shift duration: {avg_shift_hours:.1f}h, Etat multiplier: {multiplier}")
-        
+        # Policz WSZYSTKIE dni nieobecności w miesiącu (również weekendy!)
         total_absence_days = 0
         
-        # Policz dni robocze nieobecności w miesiącu (Pn-Pt, bez świąt)
         for day in self.all_days:
             if (emp_id, day) in self.absence_set:
-                current_date = date(self.year, self.month, day)
-                weekday = current_date.weekday()
-                
-                # Tylko dni robocze (Pn-Pt)
-                if weekday < 5:  # 0=Monday, 4=Friday
-                    # TODO: Ewentualnie dodać sprawdzanie świąt ustawowych
-                    total_absence_days += 1
+                total_absence_days += 1
         
-        # Godziny do odjęcia = dni urlopu × średnia długość zmiany × mnożnik etatu
-        deduction_hours = total_absence_days * avg_shift_hours * multiplier
+        # URLOP = ZAWSZE 8H za dzień
+        deduction_hours = total_absence_days * TimeNorms.HOURS_PER_ABSENCE_DAY
         
         if deduction_hours > 0:
-            print(f"    • {emp_id[:12]}: {total_absence_days} dni urlopu × {avg_shift_hours:.1f}h (śr. zmiana) × {multiplier} etatu = -{deduction_hours:.1f}h")
+            print(f"    • {emp_id[:12]}: {total_absence_days} dni urlopu × 8h = -{deduction_hours:.0f}h")
         
         return deduction_hours
     

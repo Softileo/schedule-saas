@@ -206,6 +206,11 @@ class TimeNorms:
     # Używane gdy nie można obliczyć średniej z szablonów
     DEFAULT_SHIFT_DURATION_HOURS = 8.0
     
+    # URLOP: Ile godzin odejmujemy za każdy dzień nieobecności (urlopu)
+    # ZAWSZE 8h za dzień - zgodnie z Kodeksem Pracy
+    # Przykład: 3 dni urlopu = 3 × 8h = 24h odliczenia od max_hours
+    HOURS_PER_ABSENCE_DAY = 8.0
+    
     # Mnożniki etatu dla różnych typów zatrudnienia
     # Używane do skalowania target_hours dla niepełnych etatów
     EMPLOYMENT_TYPE_MULTIPLIERS = {
