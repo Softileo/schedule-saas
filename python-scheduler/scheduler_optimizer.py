@@ -351,90 +351,136 @@ class ScheduleOptimizer:
         print(f"  ✓ HC1: Brak nakładania zmian ({count} ograniczeń)")
     
     def _add_shift_staffing_constraint(self):
-        """HC7: Każda zmiana musi mieć odpowiednią liczbę pracowników.
+        """HC7: Minimalna obsada w godzinach otwarcia sklepu z CIĄGŁYM POKRYCIEM.
         
-        KRYTYCZNE: min_employees i max_employees MUSZĄ być przestrzegane!
+        STARA LOGIKA (problem):
+        - Wymuszał tylko ogólną obsadę w godzinach otwarcia
+        - Solver mógł zostawić luki (np. 9-16 pokryte, ale 16-21 puste)
         
-        Logika min_employees:
-        1. Jeśli szablon ma min_employees > 0, użyj wartości z szablonu
-        2. Jeśli szablon ma min_employees = 0/null, użyj organization_settings.min_employees_per_shift
-        3. Domyślnie minimum 1 pracownik
-        
-        Logika max_employees:
-        1. Jeśli szablon ma max_employees > 0, wymuszaj jako twardy limit
-        2. Jeśli brak - brak limitu górnego
+        NOWA LOGIKA (ciągłe pokrycie):
+        - Dzieli godziny otwarcia na przedziały co 1h (np. 9-10, 10-11, ..., 20-21)
+        - Dla KAŻDEGO przedziału wymusza min 1 pracownika
+        - Zapewnia ciągłe pokrycie bez luk
+        - Max employees nadal wymuszane per zmiana
         """
         count = 0
-        coverage_issues = []
         
-        # Pobierz domyślne min z organization_settings
-        org_min = self.organization_settings.get('min_employees_per_shift', 1)
+        # Pobierz opening_hours z organization_settings
+        opening_hours = self.organization_settings.get('opening_hours', {})
+        if not opening_hours:
+            print("  ⚠️  HC7: Brak opening_hours w ustawieniach - używam domyślnych 9:00-21:00")
+            opening_hours = {
+                'monday': {'enabled': True, 'open': '09:00', 'close': '21:00'},
+                'tuesday': {'enabled': True, 'open': '09:00', 'close': '21:00'},
+                'wednesday': {'enabled': True, 'open': '09:00', 'close': '21:00'},
+                'thursday': {'enabled': True, 'open': '09:00', 'close': '21:00'},
+                'friday': {'enabled': True, 'open': '09:00', 'close': '21:00'},
+                'saturday': {'enabled': True, 'open': '09:00', 'close': '21:00'},
+                'sunday': {'enabled': False, 'open': '10:00', 'close': '18:00'},
+            }
+        
+        day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        
+        # Pobierz minimalną obsadę z organization_settings
+        min_staff_required = self.organization_settings.get('min_employees_per_shift', 1)
         
         for day in self.all_days:
             day_date = date(self.year, self.month, day)
-            day_str = day_date.strftime('%Y-%m-%d')
+            weekday = day_date.weekday()
+            day_name = day_names[weekday]
             
+            # Pobierz godziny otwarcia dla tego dnia
+            day_hours = opening_hours.get(day_name, {})
+            
+            # Jeśli sklep zamknięty w ten dzień - pomiń
+            if not day_hours.get('enabled', True):
+                continue
+            
+            # Pobierz godziny otwarcia
+            open_time = day_hours.get('open', '09:00')
+            close_time = day_hours.get('close', '21:00')
+            open_minutes = self._time_to_minutes(open_time)
+            close_minutes = self._time_to_minutes(close_time)
+            
+            # Podziel godziny otwarcia na przedziały co 60 minut
+            # Dla każdego przedziału sprawdzamy czy jest pokryty
+            time_slots = []
+            current = open_minutes
+            while current < close_minutes:
+                slot_end = min(current + 60, close_minutes)
+                time_slots.append((current, slot_end))
+                current = slot_end
+            
+            # Dla każdego przedziału czasowego wymuszamy minimalną obsadę
+            for slot_start, slot_end in time_slots:
+                # Znajdź zmiany które pokrywają TEN KONKRETNY przedział
+                covering_vars = []
+                
+                for (e_id, d, t_id), var in self.shifts_vars.items():
+                    if d != day:
+                        continue
+                    
+                    template = self.template_by_id[t_id]
+                    shift_start = template['start_time_minutes']
+                    shift_end = template['end_time_minutes']
+                    
+                    # Sprawdź czy zmiana pokrywa ten przedział czasowy
+                    covers_slot = False
+                    if shift_end >= shift_start:  # Normalna zmiana
+                        # Zmiana pokrywa slot jeśli: shift_start <= slot_start AND shift_end >= slot_end
+                        if shift_start <= slot_start and shift_end >= slot_end:
+                            covers_slot = True
+                    else:  # Zmiana przez północ (np. 22:00-06:00)
+                        # Sprawdź czy slot jest przed północą i pokryty
+                        if slot_start >= shift_start or slot_end <= shift_end:
+                            covers_slot = True
+                    
+                    if covers_slot:
+                        covering_vars.append(var)
+                
+                # KLUCZOWY CONSTRAINT: W tym przedziale czasowym musi być min X pracowników
+                if covering_vars:
+                    self.model.Add(sum(covering_vars) >= min_staff_required)
+                    count += 1
+                else:
+                    # Ostrzeżenie jeśli brak zmian pokrywających ten przedział
+                    slot_start_str = f"{slot_start//60:02d}:{slot_start%60:02d}"
+                    slot_end_str = f"{slot_end//60:02d}:{slot_end%60:02d}"
+                    print(f"  ⚠️  {day_date.strftime('%a %d')}: Brak zmian pokrywających {slot_start_str}-{slot_end_str}")
+            
+            # Dodatkowo: MAX employees per szablon (żeby nie przepełnić jednej zmiany)
             for template in self.shift_templates:
                 template_id = template['id']
                 
-                # Sprawdź czy szablon jest stosowany w tym dniu
                 if not self._is_template_applicable_on_day(template, day):
                     continue
                 
-                # Pobierz limity z szablonu
-                template_min = template.get('min_employees')
-                template_max = template.get('max_employees')
+                shift_start = template['start_time_minutes']
+                shift_end = template['end_time_minutes']
                 
-                # Użyj wartości z szablonu jeśli > 0, inaczej z organization_settings
-                if template_min is not None and template_min > 0:
-                    min_employees = template_min
+                # Sprawdź czy zmiana pokrywa godziny otwarcia
+                overlaps = False
+                if shift_end >= shift_start:
+                    if shift_start < close_minutes and shift_end > open_minutes:
+                        overlaps = True
                 else:
-                    min_employees = max(org_min, 1)  # Minimum 1 zawsze
+                    overlaps = True
                 
-                max_employees = template_max if template_max and template_max > 0 else None
-                
-                # Znajdź wszystkie zmienne dla tej zmiany w tym dniu
-                shift_assignments = [
-                    var for (e_id, d, t_id), var in self.shifts_vars.items()
-                    if d == day and t_id == template_id
-                ]
-                
-                available_count = len(shift_assignments)
-                
-                # Jeśli brak zmiennych ale wymagane min > 0 - problem!
-                if available_count == 0:
-                    if min_employees > 0:
-                        coverage_issues.append(
-                            f"Dzień {day_str}: Brak dostępnych pracowników dla zmiany {template.get('name', template_id)[:20]}, wymagane min {min_employees}"
-                        )
+                if not overlaps:
                     continue
                 
-                # Jeśli dostępnych mniej niż min - zgłoś ostrzeżenie
-                if available_count < min_employees:
-                    coverage_issues.append(
-                        f"Dzień {day_str}: Dostępnych {available_count} < min {min_employees} dla {template.get('name', template_id)[:20]}"
-                    )
-                
-                # HARD CONSTRAINT: Minimum pracowników (MUSI być spełnione)
-                if min_employees > 0:
-                    self.model.Add(sum(shift_assignments) >= min_employees)
-                    count += 1
-                
-                # HARD CONSTRAINT: Maximum pracowników (MUSI być spełnione jeśli ustawione)
-                if max_employees is not None and max_employees > 0:
-                    self.model.Add(sum(shift_assignments) <= max_employees)
-                    count += 1
+                template_max = template.get('max_employees')
+                if template_max and template_max > 0:
+                    shift_vars = [
+                        var for (e_id, d, t_id), var in self.shifts_vars.items()
+                        if d == day and t_id == template_id
+                    ]
+                    if shift_vars:
+                        self.model.Add(sum(shift_vars) <= template_max)
+                        count += 1
         
         self.stats['hard_constraints'] += count
-        
-        if coverage_issues:
-            print(f"  ⚠️  HC7: Wykryto {len(coverage_issues)} potencjalnych problemów z obsadą:")
-            for issue in coverage_issues[:5]:  # Max 5 pierwszych
-                print(f"      • {issue}")
-            if len(coverage_issues) > 5:
-                print(f"      • ... i {len(coverage_issues) - 5} więcej")
-        
-        print(f"  ✓ HC7: Obsada zmian ({count} ograniczeń min/max employees)")
+        print(f"  ✓ HC7: Ciągłe pokrycie godzin otwarcia ({count} ograniczeń)")
     
     def _add_daily_rest_constraint(self):
         """HC3: Minimum 11h odpoczynku między zmianami (Art. 132 KP)."""
@@ -617,25 +663,24 @@ class ScheduleOptimizer:
     def _add_max_monthly_hours_constraint(self):
         """HC10: Maksymalna liczba godzin miesięcznie dla pracownika.
         
-        KRYTYCZNE: Odejmujemy urlopy od max_hours!
-        Jeśli pracownik ma 160h max_hours i 2 dni urlopu (16h),
-        to może przepracować maksymalnie 160h - 16h = 144h.
+        WAŻNE: max_hours to limit godzin które pracownik MOŻE przepracować.
+        Urlopy są już blokowane przez absence_set (dni nieobecności).
+        NIE ODEJMUJEMY urlopów od max_hours - to powodowałoby INFEASIBILITY!
+        
+        Przykład:
+        - Pracownik: max_hours=160h, 2 dni urlopu
+        - HC10: maksymalnie 160h (urlop jest osobno - dni zablokowane)
+        - SC1: target 144h (160h - 16h urlopu)
         """
         count = 0
         
         for emp_id, emp in self.employee_by_id.items():
-            employment_type = emp.get('employment_type', 'full')
-            
             # Pobierz max_hours z danych pracownika
             max_hours = emp.get('max_hours')
             
             if max_hours is None:
                 # Jeśli nie ma max_hours, użyj monthly_hours_norm jako fallback
                 max_hours = self.data.get('monthly_hours_norm', 180)
-            
-            # KLUCZOWE: Odejmij urlopy od max_hours!
-            absence_deduction = self._calculate_absence_hours_deduction(emp_id, employment_type)
-            adjusted_max_hours = max(0, max_hours - absence_deduction)
             
             # Znajdź wszystkie zmiany tego pracownika
             employee_shifts = [
@@ -650,18 +695,15 @@ class ScheduleOptimizer:
             # Suma minut = suma(var * duration_minutes)
             total_minutes = sum(var * duration for var, duration in employee_shifts)
             
-            # Max minuty (po odjęciu urlopów)
-            max_minutes = int(adjusted_max_hours * 60)
+            # Max minuty (BEZ odejmowania urlopów - urlop jest już w absence_set!)
+            max_minutes = int(max_hours * 60)
             
-            # HARD CONSTRAINT: suma minut <= adjusted_max_hours * 60
+            # HARD CONSTRAINT: suma minut <= max_hours * 60
             self.model.Add(total_minutes <= max_minutes)
             count += 1
-            
-            if absence_deduction > 0:
-                print(f"    • {emp_id[:12]}: max {adjusted_max_hours:.0f}h (było {max_hours:.0f}h - {absence_deduction:.0f}h urlop)")
         
         self.stats['hard_constraints'] += count
-        print(f"  ✓ HC10: Max godzin miesięcznie ({count} pracowników, uwzględnia urlopy)")
+        print(f"  ✓ HC10: Max godzin miesięcznie ({count} pracowników)")
 
     def add_soft_constraints(self):
         """
