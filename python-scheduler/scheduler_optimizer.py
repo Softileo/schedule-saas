@@ -81,6 +81,15 @@ class ScheduleOptimizer:
             if emp_id:
                 self.prefs_by_employee[emp_id] = pref
         
+        # Indeksowanie przypisań szablonów do pracowników
+        self.template_assignments_by_employee = {}
+        for emp in self.employees:
+            emp_id = emp.get('id')
+            template_assignments = emp.get('template_assignments', [])
+            if template_assignments:
+                self.template_assignments_by_employee[emp_id] = set(template_assignments)
+                print(f"  📌 Pracownik {emp.get('first_name', '')} {emp.get('last_name', '')} ma przypisane szablony: {len(template_assignments)}")
+        
         # Preprocessing nieobecności - konwersja na zbiór (employee_id, day)
         self.absence_set: Set[Tuple[str, int]] = set()
         for absence in self.employee_absences:
@@ -203,6 +212,9 @@ class ScheduleOptimizer:
         enable_trading_sundays = self.organization_settings.get('enable_trading_sundays', False)
         
         for emp_id in self.employee_by_id.keys():
+            # Sprawdź czy pracownik ma przypisane konkretne szablony
+            assigned_templates = self.template_assignments_by_employee.get(emp_id)
+            
             for day in self.all_days:
                 # Sprawdź nieobecność
                 if (emp_id, day) in self.absence_set:
@@ -220,6 +232,10 @@ class ScheduleOptimizer:
                 for template in self.shift_templates:
                     template_id = template['id']
                     
+                    # KLUCZOWE: Jeśli pracownik ma przypisane szablony, sprawdź czy ten szablon jest na liście
+                    if assigned_templates is not None and template_id not in assigned_templates:
+                        continue  # Pomiń szablony nie przypisane do tego pracownika
+                    
                     # Sprawdź czy zmiana jest dozwolona w ten dzień tygodnia
                     if not self._is_template_applicable_on_day(template, day):
                         continue
@@ -230,6 +246,16 @@ class ScheduleOptimizer:
                     self.stats['total_variables'] += 1
         
         print(f"✅ Utworzono {self.stats['total_variables']} zmiennych decyzyjnych")
+        
+        # Pokaż statystyki przypisań szablonów
+        if self.template_assignments_by_employee:
+            print(f"\n📌 Pracownicy z przypisanymi szablonami: {len(self.template_assignments_by_employee)}")
+            for emp_id, templates in self.template_assignments_by_employee.items():
+                emp = self.employee_by_id.get(emp_id)
+                if emp:
+                    emp_name = f"{emp.get('first_name', '')} {emp.get('last_name', '')}"
+                    template_names = [self.template_by_id[tid]['name'] for tid in templates if tid in self.template_by_id]
+                    print(f"  • {emp_name}: {', '.join(template_names)}")
         
         # Pokaż info o niedzielach
         if self.sundays_in_month:
