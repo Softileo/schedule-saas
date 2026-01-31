@@ -10,6 +10,17 @@ from typing import Dict, List, Tuple, Optional, Set
 from datetime import datetime, date, time, timedelta
 from collections import defaultdict
 import json
+import traceback
+from config import (
+    SolverConfig,
+    SoftConstraintWeights,
+    HardConstraintDefaults,
+    QualityMetrics,
+    DiagnosticThresholds,
+    TimeNorms,
+    WeekdayMapping,
+    ManagerKeywords
+)
 
 
 class ScheduleOptimizer:
@@ -312,10 +323,6 @@ class ScheduleOptimizer:
         # HC7: Obsada zmian - każda zmiana musi mieć odpowiednią liczbę pracowników
         self._add_shift_staffing_constraint()
         
-        # HC8: Wyrównana obsada zmian - WYŁĄCZONE (konfliktuje z max_employees)
-        # self._add_balanced_shift_staffing_constraint()
-        print("  ⚠️  HC8: Wyrównana obsada - wyłączone (może konfliktować z max_employees)")
-        
         # HC9: Pokrycie wszystkich dni roboczych - KRYTYCZNE dla działania grafiku
         self._add_daily_coverage_constraint()
         
@@ -581,49 +588,7 @@ class ScheduleOptimizer:
         self.stats['hard_constraints'] += count
         print(f"  ✓ HC2: Max {max_weekly_hours}h/tydzień ({count} ograniczeń, {len(weeks)} tygodni)")
     
-    def _add_balanced_shift_staffing_constraint(self):
-        """HC8: Wyrównana obsada zmian - różnica między zmianami max 2 pracowników."""
-        count = 0
-        max_staffing_diff = 2  # Maksymalna różnica obsady między zmianami w tym samym dniu
-        
-        for day in self.all_days:
-            # Zbierz zmiany dla tego dnia
-            day_template_counts = {}
-            
-            for template in self.shift_templates:
-                template_id = template['id']
-                
-                # Znajdź zmienne dla tej zmiany w tym dniu
-                shift_vars = [
-                    var for (e_id, d, t_id), var in self.shifts_vars.items()
-                    if d == day and t_id == template_id
-                ]
-                
-                if shift_vars:
-                    day_template_counts[template_id] = (shift_vars, template)
-            
-            # Jeśli jest więcej niż jedna zmiana w tym dniu, wyrównaj obsadę
-            if len(day_template_counts) >= 2:
-                templates_list = list(day_template_counts.items())
-                
-                for i in range(len(templates_list)):
-                    for j in range(i + 1, len(templates_list)):
-                        vars1, tmpl1 = templates_list[i][1]
-                        vars2, tmpl2 = templates_list[j][1]
-                        
-                        # Różnica obsady między zmianami <= max_staffing_diff
-                        count1 = sum(vars1)
-                        count2 = sum(vars2)
-                        
-                        # |count1 - count2| <= max_staffing_diff
-                        # Czyli: count1 - count2 <= max_staffing_diff AND count2 - count1 <= max_staffing_diff
-                        self.model.Add(count1 - count2 <= max_staffing_diff)
-                        self.model.Add(count2 - count1 <= max_staffing_diff)
-                        count += 2
-        
-        self.stats['hard_constraints'] += count
-        print(f"  ✓ HC8: Wyrównana obsada zmian ({count} ograniczeń)")
-    
+
     def _add_daily_coverage_constraint(self):
         """HC9: Wymuszenie pokrycia wszystkich dni roboczych."""
         count = 0
@@ -713,9 +678,9 @@ class ScheduleOptimizer:
         penalty_terms_daily = self._add_balanced_daily_staffing_objective()
         objective_terms.extend(penalty_terms_daily)
         
-        # SC7: Sprawiedliwe zmiany tygodniowe - 75% priorytet (PRIORYTET 4)
-        penalty_terms_weekly = self._add_fair_weekly_distribution_objective()
-        objective_terms.extend(penalty_terms_weekly)
+        # SC7: Sprawiedliwe zmiany miesięczne - 75% priorytet (PRIORYTET 4)
+        penalty_terms_monthly = self._add_fair_monthly_distribution_objective()
+        objective_terms.extend(penalty_terms_monthly)
         
         # SC4: Równomierne rozłożenie zmian ogólne (PRIORYTET 5)
         penalty_terms_balance = self._add_balanced_distribution_objective()
@@ -1102,62 +1067,50 @@ class ScheduleOptimizer:
         print(f"  ✓ SC6: Równomierna obsada dzienna ({len(working_days)} dni, target: {target_daily_staffing}/dzień)")
         return terms
     
-    def _add_fair_weekly_distribution_objective(self) -> List:
-        """SC7: Sprawiedliwe rozłożenie zmian tygodniowych (75% priorytet).
+    def _add_fair_monthly_distribution_objective(self) -> List:
+        """SC7: Sprawiedliwe rozłożenie zmian miesięcznych (75% priorytet).
         
-        W każdym tygodniu pracownicy powinni mieć podobną liczbę zmian.
+        Wszyscy pracownicy mają podobną całkowitą liczbę zmian w miesiącu.
         """
         terms = []
-        penalty_per_weekly_deviation = 500  # 75% priorytet (niższa waga niż weekendy)
-        
-        # Podziel dni na tygodnie
-        weeks = {}
-        for day in self.all_days:
-            day_date = date(self.year, self.month, day)
-            week_num = day_date.isocalendar()[1]  # Numer tygodnia ISO
-            if week_num not in weeks:
-                weeks[week_num] = []
-            weeks[week_num].append(day)
+        penalty_per_monthly_deviation = SoftConstraintWeights.SC7_PENALTY_MONTHLY_DEVIATION
         
         num_employees = len(self.employee_by_id)
         if num_employees == 0:
             return terms
         
-        # Dla każdego tygodnia i pracownika
-        for week_num, week_days in weeks.items():
-            # Oblicz docelową liczbę zmian na pracownika w tygodniu
-            # Zakładamy że każdy pracownik powinien mieć podobną liczbę zmian
-            total_shifts_in_week = sum(
-                len([var for (e_id, d, t_id), var in self.shifts_vars.items() if d in week_days])
-                for _ in [1]  # Placeholder
-            )
-            
-            # Średnia zmian na pracownika w tygodniu
-            avg_weekly_shifts = len(week_days) * len(self.shift_templates) / num_employees
-            target_weekly = max(1, int(avg_weekly_shifts))
-            
-            for emp_id in self.employee_by_id.keys():
-                # Suma zmian dla pracownika w tym tygodniu
-                weekly_shift_vars = [
-                    var for (e_id, d, t_id), var in self.shifts_vars.items()
-                    if e_id == emp_id and d in week_days
-                ]
-                
-                if not weekly_shift_vars:
-                    continue
-                
-                total_weekly = sum(weekly_shift_vars)
-                
-                # Odchylenie od średniej
-                max_dev = len(week_days) * len(self.shift_templates)
-                deviation_pos = self.model.NewIntVar(0, max_dev, f'week{week_num}_pos_{emp_id[:8]}')
-                deviation_neg = self.model.NewIntVar(0, max_dev, f'week{week_num}_neg_{emp_id[:8]}')
-                
-                self.model.Add(total_weekly - target_weekly == deviation_pos - deviation_neg)
-                
-                terms.append(-penalty_per_weekly_deviation * (deviation_pos + deviation_neg))
+        # Oblicz średnią liczbę zmian na pracownika w miesiącu
+        total_shifts_available = len(self.shifts_vars)
+        if total_shifts_available == 0:
+            return terms
         
-        print(f"  ✓ SC7: Sprawiedliwe zmiany tygodniowe ({len(weeks)} tygodni, {num_employees} pracowników)")
+        avg_monthly_shifts = total_shifts_available / num_employees
+        target_monthly = int(avg_monthly_shifts)
+        
+        # Dla każdego pracownika
+        for emp_id in self.employee_by_id.keys():
+            # Suma wszystkich zmian dla pracownika w miesiącu
+            monthly_shift_vars = [
+                var for (e_id, d, t_id), var in self.shifts_vars.items()
+                if e_id == emp_id
+            ]
+            
+            if not monthly_shift_vars:
+                continue
+            
+            total_monthly_shifts = sum(monthly_shift_vars)
+            
+            # Odchylenie od średniej miesięcznej
+            max_dev = len(monthly_shift_vars)
+            deviation_pos = self.model.NewIntVar(0, max_dev, f'month_pos_{emp_id[:8]}')
+            deviation_neg = self.model.NewIntVar(0, max_dev, f'month_neg_{emp_id[:8]}')
+            
+            self.model.Add(total_monthly_shifts - target_monthly == deviation_pos - deviation_neg)
+            
+            # Kara za odchylenie od średniej miesięcznej
+            terms.append(-penalty_per_monthly_deviation * (deviation_pos + deviation_neg))
+        
+        print(f"  ✓ SC7: Sprawiedliwe zmiany miesięczne (target: {target_monthly} zmian/pracownik, {num_employees} pracowników)")
         return terms
 
     def _add_balanced_distribution_objective(self) -> List:
