@@ -594,6 +594,7 @@ class CPSATScheduler:
         self._add_hc5_trading_sundays()
         self._add_hc6_absences()
         self._add_hc7_min_staffing()
+        self._add_hc8_max_staffing()  # NOWE: max_employees jako HARD constraint
         self._add_hc11_weekly_rest()
         self._add_hc12_free_sunday()
         
@@ -738,14 +739,75 @@ class CPSATScheduler:
     def _add_hc7_min_staffing(self):
         """
         HC7: Minimalna obsada na zmianę.
-        Każdy szablon zmiany musi mieć min_employees pracowników.
+        Każdy szablon zmiany musi mieć min_employees pracowników w każdym dniu.
         
-        UWAGA: To jest "semi-hard" - jeśli nie ma wystarczająco pracowników,
-        solver może nie znaleźć rozwiązania. W praktyce używamy jako soft constraint.
+        HARD CONSTRAINT: Musi być spełnione!
         """
-        # Zamiast hard constraint, dodajemy do funkcji celu
-        # Zobacz _add_sc_staffing_balance()
-        pass
+        for day in self.data.all_days:
+            if not self.data.is_workable_day(day):
+                continue
+            
+            for tmpl_idx, tmpl in enumerate(self.data.templates):
+                # Sprawdź czy szablon działa w ten dzień
+                if not self.data.can_template_be_used_on_day(tmpl, day):
+                    continue
+                
+                min_required = tmpl.min_employees
+                if min_required <= 0:
+                    continue
+                
+                # Zbierz wszystkie zmienne dla tego szablonu w tym dniu
+                assigned_vars = [
+                    self.shifts[(e, day, tmpl_idx)]
+                    for e in range(len(self.data.employees))
+                    if (e, day, tmpl_idx) in self.shifts
+                ]
+                
+                if assigned_vars:
+                    # Minimum min_employees musi być przypisanych
+                    self.model.Add(sum(assigned_vars) >= min_required)
+                    self.stats['hard_constraints'] += 1
+    
+    def _add_hc8_max_staffing(self):
+        """
+        HC8: Maksymalna obsada na zmianę (KRYTYCZNE!).
+        Każdy szablon zmiany NIE MOŻE mieć więcej niż max_employees pracowników.
+        
+        HARD CONSTRAINT: ABSOLUTNIE musi być spełnione!
+        Przekroczenie max_employees = nadmiar kadrowy = błąd!
+        """
+        print("   → HC8: Max staffing per template (HARD)")
+        
+        for day in self.data.all_days:
+            if not self.data.is_workable_day(day):
+                continue
+            
+            for tmpl_idx, tmpl in enumerate(self.data.templates):
+                # Sprawdź czy szablon działa w ten dzień
+                if not self.data.can_template_be_used_on_day(tmpl, day):
+                    continue
+                
+                max_allowed = tmpl.max_employees
+                if max_allowed is None:
+                    continue  # Brak limitu max
+                
+                # Zbierz wszystkie zmienne dla tego szablonu w tym dniu
+                assigned_vars = [
+                    self.shifts[(e, day, tmpl_idx)]
+                    for e in range(len(self.data.employees))
+                    if (e, day, tmpl_idx) in self.shifts
+                ]
+                
+                if assigned_vars and max_allowed is not None:
+                    # HARD: Maksimum max_employees może być przypisanych
+                    self.model.Add(sum(assigned_vars) <= max_allowed)
+                    self.stats['hard_constraints'] += 1
+        
+        # Loguj podsumowanie
+        templates_with_max = [t for t in self.data.templates if t.max_employees is not None]
+        print(f"      • Szablony z max_employees: {len(templates_with_max)}")
+        for t in templates_with_max:
+            print(f"        - {t.name}: max {t.max_employees} os.")
     
     def _add_hc11_weekly_rest(self):
         """
