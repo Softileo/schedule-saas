@@ -66,6 +66,9 @@ WEIGHTS = {
     # Sprawiedliwość weekendowa
     'WEEKEND_FAIRNESS_PENALTY': 300,      # Kara za nierówne weekendy
     
+    # Sprawiedliwy rozdział zmian
+    'FAIR_SHIFT_DISTRIBUTION_PENALTY': 250,  # Kara za nierówny rozdział zmian między pracownikami
+    
     # Manager presence
     'MANAGER_PRESENCE_BONUS': 100,        # Bonus za managera na zmianie
 }
@@ -877,6 +880,7 @@ class CPSATScheduler:
         self._add_sc3_consecutive_days_penalty()
         self._add_sc4_weekend_fairness()
         self._add_sc5_daily_staffing_balance()
+        self._add_sc6_fair_shift_distribution()
         
         print(f"   ✅ Dodano {self.stats['soft_constraints']} soft constraints")
     
@@ -1122,6 +1126,77 @@ class CPSATScheduler:
                         f"understaffed_{day}_{tmpl.name}"
                     ))
                     self.stats['soft_constraints'] += 1
+    
+    def _add_sc6_fair_shift_distribution(self):
+        """
+        SC6: Sprawiedliwy rozdział zmian między pracowników.
+        Kara za różnice w liczbie przypisanych zmian tego samego typu.
+        
+        Dla każdego szablonu zmian, liczymy ile razy każdy pracownik
+        został przypisany i karamy różnice między min i max.
+        """
+        print("   → SC6: Sprawiedliwy rozdział zmian")
+        
+        for tmpl_idx, tmpl in enumerate(self.data.templates):
+            # Policz ile razy każdy pracownik ma zmianę tego typu
+            employee_shift_counts = []
+            
+            for emp_idx in range(len(self.data.employees)):
+                # Suma zmian tego szablonu dla tego pracownika
+                emp_shifts = [
+                    self.shifts[(emp_idx, day, tmpl_idx)]
+                    for day in self.data.all_days
+                    if (emp_idx, day, tmpl_idx) in self.shifts
+                ]
+                
+                if emp_shifts:
+                    count_var = self.model.NewIntVar(
+                        0, len(self.data.all_days),
+                        f"shift_count_{emp_idx}_{tmpl_idx}"
+                    )
+                    self.model.Add(count_var == sum(emp_shifts))
+                    employee_shift_counts.append(count_var)
+            
+            if len(employee_shift_counts) < 2:
+                continue  # Nie ma sensu balansować dla jednego pracownika
+            
+            # Znajdź min i max
+            min_shifts = self.model.NewIntVar(
+                0, len(self.data.all_days),
+                f"min_shifts_{tmpl_idx}"
+            )
+            max_shifts = self.model.NewIntVar(
+                0, len(self.data.all_days),
+                f"max_shifts_{tmpl_idx}"
+            )
+            
+            self.model.AddMinEquality(min_shifts, employee_shift_counts)
+            self.model.AddMaxEquality(max_shifts, employee_shift_counts)
+            
+            # Różnica między max i min
+            shift_diff = self.model.NewIntVar(
+                0, len(self.data.all_days),
+                f"shift_diff_{tmpl_idx}"
+            )
+            self.model.Add(shift_diff == max_shifts - min_shifts)
+            
+            # Kara za różnicę > 1 (tolerujemy różnicę 0 lub 1)
+            excess_diff = self.model.NewIntVar(
+                0, len(self.data.all_days),
+                f"excess_shift_diff_{tmpl_idx}"
+            )
+            self.model.AddMaxEquality(
+                excess_diff,
+                [shift_diff - 1, self.model.NewConstant(0)]
+            )
+            
+            # Dodaj karę do funkcji celu
+            self.penalties.append((
+                excess_diff,
+                WEIGHTS['FAIR_SHIFT_DISTRIBUTION_PENALTY'],
+                f"shift_imbalance_{tmpl.name}"
+            ))
+            self.stats['soft_constraints'] += 1
     
     # =========================================================================
     # KROK 4: Budowanie funkcji celu i rozwiązywanie

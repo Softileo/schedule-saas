@@ -1,0 +1,446 @@
+
+================================================================================
+  ZAAWANSOWANE TESTY GENERATORA GRAFIKÓW
+================================================================================
+Test kompleksowo sprawdza algorytm CP-SAT
+poprzez dynamiczne generowanie scenariuszy i walidację zasad.
+✅ Python Scheduler is healthy
+   Version: 3.0.0-cpsat-pro
+   Service: calenda-schedule-python-scheduler
+
+================================================================================
+  SERIA TESTÓW
+================================================================================
+
+1️⃣  Test małego sklepu (wczesne otwarcie)...
+
+================================================================================
+  TEST: Mały sklep - wczesne otwarcie (6:00-14:00)
+================================================================================
+
+📋 Parametry scenariusza:
+   Miesiąc: 2/2026
+   Pracownicy: 5
+   Szablony zmian: 1
+   Godziny otwarcia: 06:00:00 - 14:00:00
+   Niedziele handlowe: 0
+
+🚀 Wysyłanie żądania do http://localhost:8080/api/generate...
+   Status: 200
+✅ Grafik wygenerowany pomyślnie
+
+📊 Statystyki:
+   Total shifts: 72
+   Solver status: OPTIMAL
+   Solve time: 0.06s
+
+================================================================================
+  WALIDACJA GRAFIKU
+================================================================================
+
+📊 R1: Sprawdzanie limitów godzin pracowników...
+   ✅ Michał Kamiński: 112.5h / 192h
+   ✅ Tomasz Zieliński: 105.0h / 192h
+   ✅ Anna Szymański: 105.0h / 192h
+   ✅ Ewa Kowalski: 112.5h / 192h
+   ✅ Ewa Wiśniewski: 105.0h / 192h
+
+👥 R2: Sprawdzanie limitów obsady na zmianach...
+   ✅ Wszystkie limity obsady przestrzegane
+
+🏪 R3: Sprawdzanie pokrycia godzin otwarcia...
+   ✅ Wszystkie dni robocze pokryte
+
+⚖️  R4: Sprawdzanie równomierności obsady...
+   ✅ Zmiana dzienna (8h): różnica 0 pracowników
+
+🎯 R5: Sprawdzanie sprawiedliwego rozdziału zmian...
+   ✅ Zmiana dzienna (8h): różnica 1 zmian
+
+📅 R6: Sprawdzanie logiki niedziel...
+   ✅ Logika niedziel poprawna
+
+--------------------------------------------------------------------------------
+✅ WSZYSTKIE ZASADY SPEŁNIONE!
+
+2️⃣  Test średniego sklepu (standardowe godziny)...
+
+================================================================================
+  TEST: Średni sklep - standardowe godziny (9:00-21:00)
+================================================================================
+
+📋 Parametry scenariusza:
+   Miesiąc: 2/2026
+   Pracownicy: 12
+   Szablony zmian: 2
+   Godziny otwarcia: 09:00:00 - 21:00:00
+   Niedziele handlowe: 0
+
+🚀 Wysyłanie żądania do http://localhost:8080/api/generate...
+   Status: 200
+✅ Grafik wygenerowany pomyślnie
+
+📊 Statystyki:
+   Total shifts: 177
+   Solver status: OPTIMAL
+   Solve time: 0.93s
+
+================================================================================
+  WALIDACJA GRAFIKU
+================================================================================
+
+📊 R1: Sprawdzanie limitów godzin pracowników...
+   ✅ Ewa Wójcik: 120.0h / 144h
+   ✅ Jan Mazur: 82.5h / 96h
+   ✅ Michał Dąbrowski: 82.5h / 96h
+   ✅ Andrzej Woźniak: 157.5h / 192h
+   ✅ Paweł Kowalski: 120.0h / 144h
+   ✅ Agnieszka Kowalczyk: 82.5h / 96h
+   ✅ Krzysztof Wójcik: 120.0h / 144h
+   ✅ Joanna Krawczyk: 157.5h / 192h
+   ✅ Michał Kowalczyk: 82.5h / 96h
+   ✅ Maria Kamiński: 82.5h / 96h
+   ✅ Paweł Kamiński: 82.5h / 96h
+   ✅ Tomasz Dąbrowski: 157.5h / 192h
+
+👥 R2: Sprawdzanie limitów obsady na zmianach...
+   ✅ Wszystkie limity obsady przestrzegane
+
+🏪 R3: Sprawdzanie pokrycia godzin otwarcia...
+   ✅ Wszystkie dni robocze pokryte
+
+⚖️  R4: Sprawdzanie równomierności obsady...
+   ⚠️  Zmiana poranna (8h): różnica 2 pracowników (zalecane ±1)
+   ⚠️  Zmiana popołudniowa (8h): różnica 2 pracowników (zalecane ±1)
+
+🎯 R5: Sprawdzanie sprawiedliwego rozdziału zmian...
+   ⚠️  Zmiana poranna (8h): różnica 4 zmian między pracownikami
+   ⚠️  Zmiana popołudniowa (8h): różnica 6 zmian między pracownikami
+
+📅 R6: Sprawdzanie logiki niedziel...
+   ✅ Logika niedziel poprawna
+
+--------------------------------------------------------------------------------
+✅ WSZYSTKIE ZASADY SPEŁNIONE!
+
+⚠️  Ostrzeżenia: 4
+   ⚠️  R4: Zmiana poranna (8h) - różnica obsady 2 (min=2, max=4)
+   ⚠️  R4: Zmiana popołudniowa (8h) - różnica obsady 2 (min=2, max=4)
+   ⚠️  R5: Zmiana poranna (8h) - nierówny rozdział zmian: różnica 4 (min=6, max=10)
+   ⚠️  R5: Zmiana popołudniowa (8h) - nierówny rozdział zmian: różnica 6 (min=5, max=11)
+
+3️⃣  Test dużego sklepu (długie godziny)...
+
+================================================================================
+  TEST: Duży market - długie godziny (6:00-22:00)
+================================================================================
+
+📋 Parametry scenariusza:
+   Miesiąc: 2/2026
+   Pracownicy: 20
+   Szablony zmian: 2
+   Godziny otwarcia: 06:00:00 - 22:00:00
+   Niedziele handlowe: 0
+
+🚀 Wysyłanie żądania do http://localhost:8080/api/generate...
+   Status: 200
+✅ Grafik wygenerowany pomyślnie
+
+📊 Statystyki:
+   Total shifts: 252
+   Solver status: OPTIMAL
+   Solve time: 0.87s
+
+================================================================================
+  WALIDACJA GRAFIKU
+================================================================================
+
+📊 R1: Sprawdzanie limitów godzin pracowników...
+   ✅ Agnieszka Dąbrowski: 157.5h / 192h
+   ✅ Agnieszka Mazur: 78.8h / 96h
+   ✅ Jan Kowalczyk: 78.8h / 96h
+   ✅ Magdalena Kamiński: 157.5h / 192h
+   ✅ Joanna Lewandowski: 157.5h / 192h
+   ✅ Anna Woźniak: 157.5h / 192h
+   ✅ Krzysztof Wiśniewski: 157.5h / 192h
+   ✅ Michał Woźniak: 157.5h / 192h
+   ✅ Tomasz Nowak: 157.5h / 192h
+   ✅ Paweł Kowalski: 157.5h / 192h
+   ✅ Piotr Szymański: 157.5h / 192h
+   ✅ Agnieszka Woźniak: 157.5h / 192h
+   ✅ Katarzyna Wójcik: 157.5h / 192h
+   ✅ Katarzyna Lewandowski: 157.5h / 192h
+   ✅ Tomasz Mazur: 78.8h / 96h
+   ✅ Michał Jankowski: 157.5h / 192h
+   ✅ Michał Kowalski: 157.5h / 192h
+   ✅ Andrzej Woźniak: 157.5h / 192h
+   ✅ Andrzej Krawczyk: 78.8h / 96h
+   ✅ Tomasz Woźniak: 157.5h / 192h
+
+👥 R2: Sprawdzanie limitów obsady na zmianach...
+   ✅ Wszystkie limity obsady przestrzegane
+
+🏪 R3: Sprawdzanie pokrycia godzin otwarcia...
+   ✅ Wszystkie dni robocze pokryte
+
+⚖️  R4: Sprawdzanie równomierności obsady...
+   ⚠️  Zmiana dzienna (12h): różnica 2 pracowników (zalecane ±1)
+   ⚠️  Zmiana nocna (12h): różnica 3 pracowników (zalecane ±1)
+
+🎯 R5: Sprawdzanie sprawiedliwego rozdziału zmian...
+   ⚠️  Zmiana dzienna (12h): różnica 2 zmian między pracownikami
+   ⚠️  Zmiana nocna (12h): różnica 5 zmian między pracownikami
+
+📅 R6: Sprawdzanie logiki niedziel...
+   ✅ Logika niedziel poprawna
+
+--------------------------------------------------------------------------------
+✅ WSZYSTKIE ZASADY SPEŁNIONE!
+
+⚠️  Ostrzeżenia: 4
+   ⚠️  R4: Zmiana dzienna (12h) - różnica obsady 2 (min=4, max=6)
+   ⚠️  R4: Zmiana nocna (12h) - różnica obsady 3 (min=3, max=6)
+   ⚠️  R5: Zmiana dzienna (12h) - nierówny rozdział zmian: różnica 2 (min=5, max=7)
+   ⚠️  R5: Zmiana nocna (12h) - nierówny rozdział zmian: różnica 5 (min=2, max=7)
+
+4️⃣  Test sklepu w centrum (późne otwarcie)...
+
+================================================================================
+  TEST: Sklep w centrum - późne otwarcie (10:00-22:00)
+================================================================================
+
+📋 Parametry scenariusza:
+   Miesiąc: 2/2026
+   Pracownicy: 8
+   Szablony zmian: 1
+   Godziny otwarcia: 10:00:00 - 22:00:00
+   Niedziele handlowe: 0
+
+🚀 Wysyłanie żądania do http://localhost:8080/api/generate...
+   Status: 200
+✅ Grafik wygenerowany pomyślnie
+
+📊 Statystyki:
+   Total shifts: 72
+   Solver status: OPTIMAL
+   Solve time: 0.15s
+
+================================================================================
+  WALIDACJA GRAFIKU
+================================================================================
+
+📊 R1: Sprawdzanie limitów godzin pracowników...
+   ✅ Krzysztof Kowalczyk: 126.5h / 192h
+   ✅ Paweł Jankowski: 126.5h / 192h
+   ✅ Piotr Mazur: 126.5h / 192h
+   ✅ Paweł Zieliński: 69.0h / 96h
+   ✅ Maria Krawczyk: 69.0h / 96h
+   ✅ Maria Nowak: 115.0h / 192h
+   ✅ Agnieszka Wójcik: 69.0h / 96h
+   ✅ Andrzej Kamiński: 126.5h / 192h
+
+👥 R2: Sprawdzanie limitów obsady na zmianach...
+   ✅ Wszystkie limity obsady przestrzegane
+
+🏪 R3: Sprawdzanie pokrycia godzin otwarcia...
+   ✅ Wszystkie dni robocze pokryte
+
+⚖️  R4: Sprawdzanie równomierności obsady...
+   ✅ Zmiana dzienna (8h): różnica 0 pracowników
+
+🎯 R5: Sprawdzanie sprawiedliwego rozdziału zmian...
+   ⚠️  Zmiana dzienna (8h): różnica 5 zmian między pracownikami
+
+📅 R6: Sprawdzanie logiki niedziel...
+   ✅ Logika niedziel poprawna
+
+--------------------------------------------------------------------------------
+✅ WSZYSTKIE ZASADY SPEŁNIONE!
+
+⚠️  Ostrzeżenia: 1
+   ⚠️  R5: Zmiana dzienna (8h) - nierówny rozdział zmian: różnica 5 (min=6, max=11)
+
+5️⃣  Testy losowych scenariuszy (różne godziny)...
+
+================================================================================
+  TEST: Losowy scenariusz #1
+================================================================================
+🌱 Seed: 839258
+
+
+📋 Parametry scenariusza:
+   Miesiąc: 8/2026
+   Pracownicy: 8
+   Szablony zmian: 1
+   Godziny otwarcia: 06:00:00 - 22:00:00
+   Niedziele handlowe: 0
+
+🚀 Wysyłanie żądania do http://localhost:8080/api/generate...
+   Status: 200
+✅ Grafik wygenerowany pomyślnie
+
+📊 Statystyki:
+   Total shifts: 52
+   Solver status: OPTIMAL
+   Solve time: 0.17s
+
+================================================================================
+  WALIDACJA GRAFIKU
+================================================================================
+
+📊 R1: Sprawdzanie limitów godzin pracowników...
+   ✅ Maria Szymański: 108.5h / 156h
+   ✅ Barbara Kowalczyk: 108.5h / 208h
+   ✅ Magdalena Kowalski: 108.5h / 208h
+   ✅ Jan Zieliński: 77.5h / 104h
+   ✅ Ewa Wójcik: 108.5h / 208h
+   ✅ Katarzyna Kowalczyk: 77.5h / 104h
+   ✅ Anna Wiśniewski: 108.5h / 156h
+   ✅ Maria Lewandowski: 108.5h / 208h
+
+👥 R2: Sprawdzanie limitów obsady na zmianach...
+   ✅ Wszystkie limity obsady przestrzegane
+
+🏪 R3: Sprawdzanie pokrycia godzin otwarcia...
+   ✅ Wszystkie dni robocze pokryte
+
+⚖️  R4: Sprawdzanie równomierności obsady...
+   ✅ Zmiana dzienna (8h): różnica 0 pracowników
+
+🎯 R5: Sprawdzanie sprawiedliwego rozdziału zmian...
+   ⚠️  Zmiana dzienna (8h): różnica 2 zmian między pracownikami
+
+📅 R6: Sprawdzanie logiki niedziel...
+   ✅ Logika niedziel poprawna
+
+--------------------------------------------------------------------------------
+✅ WSZYSTKIE ZASADY SPEŁNIONE!
+
+⚠️  Ostrzeżenia: 1
+   ⚠️  R5: Zmiana dzienna (8h) - nierówny rozdział zmian: różnica 2 (min=5, max=7)
+
+================================================================================
+  TEST: Losowy scenariusz #2
+================================================================================
+🌱 Seed: 617021
+
+
+📋 Parametry scenariusza:
+   Miesiąc: 2/2026
+   Pracownicy: 7
+   Szablony zmian: 2
+   Godziny otwarcia: 09:00:00 - 21:00:00
+   Niedziele handlowe: 0
+
+🚀 Wysyłanie żądania do http://localhost:8080/api/generate...
+   Status: 200
+✅ Grafik wygenerowany pomyślnie
+
+📊 Statystyki:
+   Total shifts: 137
+   Solver status: OPTIMAL
+   Solve time: 0.14s
+
+================================================================================
+  WALIDACJA GRAFIKU
+================================================================================
+
+📊 R1: Sprawdzanie limitów godzin pracowników...
+   ✅ Katarzyna Szymański: 157.5h / 192h
+   ✅ Katarzyna Kowalski: 157.5h / 192h
+   ✅ Agnieszka Dąbrowski: 157.5h / 192h
+   ✅ Agnieszka Szymański: 157.5h / 192h
+   ✅ Tomasz Kozłowski: 157.5h / 192h
+   ✅ Michał Kowalski: 157.5h / 192h
+   ✅ Krzysztof Mazur: 82.5h / 96h
+
+👥 R2: Sprawdzanie limitów obsady na zmianach...
+   ✅ Wszystkie limity obsady przestrzegane
+
+🏪 R3: Sprawdzanie pokrycia godzin otwarcia...
+   ✅ Wszystkie dni robocze pokryte
+
+⚖️  R4: Sprawdzanie równomierności obsady...
+   ⚠️  Zmiana poranna (8h): różnica 2 pracowników (zalecane ±1)
+   ✅ Zmiana popołudniowa (8h): różnica 1 pracowników
+
+🎯 R5: Sprawdzanie sprawiedliwego rozdziału zmian...
+   ✅ Zmiana poranna (8h): różnica 1 zmian
+   ⚠️  Zmiana popołudniowa (8h): różnica 9 zmian między pracownikami
+
+📅 R6: Sprawdzanie logiki niedziel...
+   ✅ Logika niedziel poprawna
+
+--------------------------------------------------------------------------------
+✅ WSZYSTKIE ZASADY SPEŁNIONE!
+
+⚠️  Ostrzeżenia: 2
+   ⚠️  R4: Zmiana poranna (8h) - różnica obsady 2 (min=1, max=3)
+   ⚠️  R5: Zmiana popołudniowa (8h) - nierówny rozdział zmian: różnica 9 (min=2, max=11)
+
+================================================================================
+  TEST: Losowy scenariusz #3
+================================================================================
+🌱 Seed: 894778
+
+
+📋 Parametry scenariusza:
+   Miesiąc: 10/2026
+   Pracownicy: 7
+   Szablony zmian: 1
+   Godziny otwarcia: 06:00:00 - 14:00:00
+   Niedziele handlowe: 0
+
+🚀 Wysyłanie żądania do http://localhost:8080/api/generate...
+   Status: 200
+✅ Grafik wygenerowany pomyślnie
+
+📊 Statystyki:
+   Total shifts: 54
+   Solver status: OPTIMAL
+   Solve time: 0.14s
+
+================================================================================
+  WALIDACJA GRAFIKU
+================================================================================
+
+📊 R1: Sprawdzanie limitów godzin pracowników...
+   ✅ Joanna Kozłowski: 60.0h / 108h
+   ✅ Katarzyna Kozłowski: 60.0h / 216h
+   ✅ Katarzyna Zieliński: 60.0h / 108h
+   ✅ Jan Nowak: 60.0h / 216h
+   ✅ Jan Kamiński: 60.0h / 216h
+   ✅ Michał Kowalczyk: 52.5h / 216h
+   ✅ Paweł Kamiński: 52.5h / 108h
+
+👥 R2: Sprawdzanie limitów obsady na zmianach...
+   ✅ Wszystkie limity obsady przestrzegane
+
+🏪 R3: Sprawdzanie pokrycia godzin otwarcia...
+   ✅ Wszystkie dni robocze pokryte
+
+⚖️  R4: Sprawdzanie równomierności obsady...
+   ✅ Zmiana dzienna (8h): różnica 0 pracowników
+
+🎯 R5: Sprawdzanie sprawiedliwego rozdziału zmian...
+   ✅ Zmiana dzienna (8h): różnica 1 zmian
+
+📅 R6: Sprawdzanie logiki niedziel...
+   ✅ Logika niedziel poprawna
+
+--------------------------------------------------------------------------------
+✅ WSZYSTKIE ZASADY SPEŁNIONE!
+
+================================================================================
+  PODSUMOWANIE TESTÓW
+================================================================================
+
+Wyniki: 5/5 testów zaliczonych
+   ✅ PASS - small_early
+   ✅ PASS - medium
+   ✅ PASS - large
+   ✅ PASS - late_opening
+   ✅ PASS - random
+
+🎉 WSZYSTKIE TESTY ZALICZONE!
+   Algorytm CP-SAT działa poprawnie i spełnia wszystkie zasady.
