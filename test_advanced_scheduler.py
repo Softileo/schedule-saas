@@ -27,9 +27,12 @@ import requests
 import json
 import random
 import uuid
+import os
+import pickle
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict, Counter
+from pathlib import Path
 import calendar
 
 # ============================================================================
@@ -38,6 +41,9 @@ import calendar
 
 BASE_URL = "http://localhost:8080"
 API_KEY = "schedule-saas-local-dev-2026"
+
+# Plik do zapisywania nieudanych testów
+FAILED_TESTS_FILE = Path(__file__).parent / "failed_test_seeds.pkl"
 
 HEADERS = {
     "Content-Type": "application/json",
@@ -55,6 +61,118 @@ FIRST_NAMES = ["Anna", "Jan", "Maria", "Piotr", "Katarzyna", "Tomasz",
 LAST_NAMES = ["Nowak", "Kowalski", "Wiśniewski", "Dąbrowski", "Lewandowski",
               "Wójcik", "Kamiński", "Kowalczyk", "Zieliński", "Szymański",
               "Woźniak", "Kozłowski", "Jankowski", "Mazur", "Krawczyk"]
+
+
+# ============================================================================
+# ZARZĄDZANIE NIEUDANYMI TESTAMI
+# ============================================================================
+
+def save_failed_test(test_name: str, scenario: Dict, seed: int, error_msg: str):
+    """Zapisuje nieudany test do pliku."""
+    failed_tests = load_failed_tests()
+    
+    failed_test = {
+        'test_name': test_name,
+        'scenario': scenario,
+        'seed': seed,
+        'error_msg': error_msg,
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    # Dodaj test na początek listy (LIFO)
+    failed_tests.insert(0, failed_test)
+    
+    # Zapisz do pliku
+    try:
+        with open(FAILED_TESTS_FILE, 'wb') as f:
+            pickle.dump(failed_tests, f)
+        print(f"\n💾 Nieudany test zapisany do {FAILED_TESTS_FILE}")
+        print(f"   Test: {test_name}")
+        print(f"   Seed: {seed}")
+    except Exception as e:
+        print(f"\n⚠️  Nie udało się zapisać testu: {e}")
+
+
+def load_failed_tests() -> List[Dict]:
+    """Wczytuje listę nieudanych testów."""
+    if not FAILED_TESTS_FILE.exists():
+        return []
+    
+    try:
+        with open(FAILED_TESTS_FILE, 'rb') as f:
+            return pickle.load(f)
+    except Exception as e:
+        print(f"⚠️  Nie udało się wczytać nieudanych testów: {e}")
+        return []
+
+
+def remove_passed_test(test_index: int):
+    """Usuwa test który przeszedł z listy nieudanych."""
+    failed_tests = load_failed_tests()
+    
+    if 0 <= test_index < len(failed_tests):
+        removed_test = failed_tests.pop(test_index)
+        
+        # Zapisz zaktualizowaną listę
+        try:
+            if failed_tests:
+                with open(FAILED_TESTS_FILE, 'wb') as f:
+                    pickle.dump(failed_tests, f)
+            else:
+                # Usuń plik jeśli nie ma więcej nieudanych testów
+                FAILED_TESTS_FILE.unlink()
+                print("\n🎉 Wszystkie zapisane testy przeszły! Plik usunięty.")
+            
+            print(f"\n✅ Test '{removed_test['test_name']}' (seed: {removed_test['seed']}) usunięty z listy nieudanych")
+        except Exception as e:
+            print(f"\n⚠️  Nie udało się zaktualizować listy: {e}")
+
+
+def retry_failed_tests() -> Tuple[int, int]:
+    """
+    Ponownie uruchamia wszystkie nieudane testy.
+    
+    Returns:
+        (passed_count, total_count)
+    """
+    failed_tests = load_failed_tests()
+    
+    if not failed_tests:
+        return 0, 0
+    
+    print_header(f"PONOWNE URUCHAMIANIE {len(failed_tests)} NIEUDANYCH TESTÓW")
+    print("Te testy nie powiodły się wcześniej i zostały zapisane do ponownego sprawdzenia.\n")
+    
+    passed = 0
+    for i, test_data in enumerate(failed_tests):
+        test_name = test_data['test_name']
+        scenario = test_data['scenario']
+        seed = test_data['seed']
+        original_error = test_data['error_msg']
+        timestamp = test_data.get('timestamp', 'unknown')
+        
+        print(f"\n{'='*80}")
+        print(f"🔄 Ponowne uruchomienie testu #{i+1}/{len(failed_tests)}")
+        print(f"   Nazwa: {test_name}")
+        print(f"   Seed: {seed}")
+        print(f"   Oryginalne niepowodzenie: {timestamp}")
+        print(f"   Błąd: {original_error}")
+        print(f"{'='*80}\n")
+        
+        # Ustaw seed dla reprodukowalności
+        random.seed(seed)
+        
+        # Uruchom test
+        result = run_scenario_test(test_name, scenario, seed)
+        
+        if result:
+            passed += 1
+            print(f"\n✅ Test teraz przechodzi! Usuwam z listy nieudanych.")
+            remove_passed_test(i)
+        else:
+            print(f"\n❌ Test nadal nie przechodzi.")
+    
+    return passed, len(failed_tests)
 
 
 # ============================================================================
@@ -801,9 +919,12 @@ def check_health() -> bool:
         return False
 
 
-def run_scenario_test(scenario_name: str, scenario: Dict) -> bool:
+def run_scenario_test(scenario_name: str, scenario: Dict, seed: Optional[int] = None) -> bool:
     """Wykonuje test dla scenariusza."""
     print_header(f"TEST: {scenario_name}")
+    
+    if seed is not None:
+        print(f"🌱 Seed: {seed}\n")
     
     # Obsługa obu formatów - bezpośredni CP-SAT i Next.js wrapper
     if 'input' in scenario:
@@ -834,6 +955,8 @@ def run_scenario_test(scenario_name: str, scenario: Dict) -> bool:
     # Wyślij request
     print(f"\n🚀 Wysyłanie żądania do {BASE_URL}/api/generate...")
     
+    error_msg = None
+    
     try:
         response = requests.post(
             f"{BASE_URL}/api/generate",
@@ -845,17 +968,23 @@ def run_scenario_test(scenario_name: str, scenario: Dict) -> bool:
         print(f"   Status: {response.status_code}")
         
         if response.status_code != 200:
+            error_msg = f"API error: {response.text}"
             print(f"❌ Błąd API: {response.text}")
+            if seed is not None:
+                save_failed_test(scenario_name, scenario, seed, error_msg)
             return False
         
         result = response.json()
         
         # Sprawdź sukces
         if not result.get('success'):
+            error_msg = f"Generator failed: {result.get('error', 'Unknown error')}"
             print(f"❌ Generowanie grafiku nieudane")
             print(f"   Error: {result.get('error', 'Unknown error')}")
             if 'details' in result:
                 print(f"   Details: {result['details']}")
+            if seed is not None:
+                save_failed_test(scenario_name, scenario, seed, error_msg)
             return False
         
         print("✅ Grafik wygenerowany pomyślnie")
@@ -871,15 +1000,25 @@ def run_scenario_test(scenario_name: str, scenario: Dict) -> bool:
         validator = ScheduleValidator(scenario, result)
         is_valid = validator.validate_all()
         
+        if not is_valid and seed is not None:
+            error_msg = f"Validation failed: {len(validator.errors)} errors"
+            save_failed_test(scenario_name, scenario, seed, error_msg)
+        
         return is_valid
         
     except requests.exceptions.Timeout:
+        error_msg = "Request timeout (>180s)"
         print("❌ Timeout - request trwał zbyt długo (>180s)")
+        if seed is not None:
+            save_failed_test(scenario_name, scenario, seed, error_msg)
         return False
     except Exception as e:
+        error_msg = f"Exception: {str(e)}"
         print(f"❌ Błąd podczas testu: {e}")
         import traceback
         traceback.print_exc()
+        if seed is not None:
+            save_failed_test(scenario_name, scenario, seed, error_msg)
         return False
 
 
@@ -955,11 +1094,15 @@ def test_late_opening_shop():
     return run_scenario_test("Sklep w centrum - późne otwarcie (10:00-22:00)", scenario)
 
 
-def test_random_scenarios(count: int = 3):
+def test_random_scenarios(count: int = 3) -> bool:
     """TEST 5: Losowe scenariusze z różnymi godzinami otwarcia."""
     results = []
     
     for i in range(count):
+        # Generuj seed dla reprodukowalności
+        seed = random.randint(1, 1000000)
+        random.seed(seed)
+        
         gen = ScenarioGenerator(year=2026, month=random.randint(1, 12))
         
         # Losowe parametry
@@ -1018,7 +1161,7 @@ def test_random_scenarios(count: int = 3):
             trading_sunday_probability=0.0  # Bez niedziel dla stabilności testów
         )
         
-        result = run_scenario_test(f"Losowy scenariusz #{i+1}", scenario)
+        result = run_scenario_test(f"Losowy scenariusz #{i+1}", scenario, seed)
         results.append(result)
     
     return all(results)
@@ -1029,6 +1172,23 @@ def main():
     print_header("ZAAWANSOWANE TESTY GENERATORA GRAFIKÓW")
     print("Test kompleksowo sprawdza algorytm CP-SAT")
     print("poprzez dynamiczne generowanie scenariuszy i walidację zasad.")
+    
+    # Sprawdź czy są zapisane nieudane testy
+    failed_tests = load_failed_tests()
+    if failed_tests:
+        print(f"\n⚠️  UWAGA: Znaleziono {len(failed_tests)} zapisanych nieudanych testów!")
+        print("   Najpierw zostaną one ponownie uruchomione.")
+        
+        passed, total = retry_failed_tests()
+        
+        if passed == total:
+            print(f"\n✅ Wszystkie {total} zapisane testy teraz przechodzą!")
+        else:
+            print(f"\n⚠️  {total - passed} z {total} zapisanych testów nadal nie przechodzi.")
+        
+        print("\n" + "="*80)
+        print("Teraz uruchamiamy nowe testy...")
+        print("="*80)
     
     # Sprawdź połączenie
     if not check_health():
@@ -1068,12 +1228,20 @@ def main():
         status = "✅ PASS" if result else "❌ FAIL"
         print(f"   {status} - {test_name}")
     
+    # Pokaż info o zapisanych testach
+    remaining_failed = load_failed_tests()
+    if remaining_failed:
+        print(f"\n📝 Zapisane nieudane testy: {len(remaining_failed)}")
+        print(f"   Lokalizacja: {FAILED_TESTS_FILE}")
+        print("   Uruchom ponownie ten skrypt aby je przetestować.")
+    
     if passed == total:
         print("\n🎉 WSZYSTKIE TESTY ZALICZONE!")
         print("   Algorytm CP-SAT działa poprawnie i spełnia wszystkie zasady.")
     else:
         print(f"\n❌ {total - passed} TESTÓW NIE POWIODŁO SIĘ")
         print("   Sprawdź logi powyżej aby zidentyfikować problemy.")
+        print("   Nieudane testy z seedami zostały zapisane i będą ponownie uruchomione przy następnym teście.")
     
     return passed == total
 

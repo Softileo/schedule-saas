@@ -50,7 +50,7 @@ EMPLOYMENT_MULTIPLIERS: Dict[str, float] = {
 WEIGHTS = {
     # CRITICAL: Kara za odchylenie od normy miesięcznej
     # Używamy BARDZO wysokiej kary, aby solver "dobijał" do normy
-    'HOURS_DEVIATION_PER_MINUTE': 100,    # 100 pkt za każdą minutę odchylenia
+    'HOURS_DEVIATION_PER_MINUTE': 200,    # 100 pkt za każdą minutę odchylenia
     
     # Nagrody za preferencje
     'PREFERENCE_MATCH': 50,               # Nagroda za zgodność z preferencją
