@@ -40,14 +40,14 @@ export interface PythonEmployee {
 export interface PythonTemplate {
     id: string;
     name: string;
-    start_time: string;
-    end_time: string;
+    start_time: string; // HH:MM format (no seconds)
+    end_time: string; // HH:MM format (no seconds)
     break_minutes: number;
     days_of_week: string[];
     is_weekend: boolean;
     min_employees: number;
     max_employees: number | null;
-    color: string;
+    // Note: color removed - UI only, not needed for calculations
 }
 
 export interface PythonInput {
@@ -57,15 +57,8 @@ export interface PythonInput {
     employees: PythonEmployee[];
     templates: PythonTemplate[];
     settings: {
-        store_open_time?: string;
-        store_close_time?: string;
-        work_days_per_week: number;
-        enforce_daily_rest: boolean;
-        enforce_weekly_rest: boolean;
-        max_consecutive_work_days: number;
-        min_staff_per_shift: number;
-        max_sunday_shifts_per_month: number;
-        balance_shift_distribution: boolean;
+        // Note: Most settings removed - not used by Python scheduler
+        // Only kept for backwards compatibility with Genetic API (deprecated)
     };
     holidays: Array<{
         date: string;
@@ -81,23 +74,24 @@ export interface CPSATEmployee {
     id: string;
     first_name: string;
     last_name: string;
-    position?: string | null;
     employment_type: string;
+    max_hours: number; // CRITICAL: Used in SC1 (employment type objective) and HC10 (max monthly hours)
     custom_hours?: number | null;
     is_active: boolean;
-    color?: string | null;
+    // Note: position removed - SC3 (manager presence) disabled, treats all employees equally
+    // Note: color removed - UI only, not needed for calculations
 }
 
 export interface CPSATTemplate {
     id: string;
     name: string;
-    start_time: string;
-    end_time: string;
+    start_time: string; // HH:MM format (no seconds)
+    end_time: string; // HH:MM format (no seconds)
     break_minutes: number;
     min_employees: number;
     max_employees: number | null;
-    color?: string | null;
     applicable_days?: string[] | null;
+    // Note: color removed - UI only, not needed for CP-SAT solver
 }
 
 export interface CPSATInput {
@@ -105,10 +99,12 @@ export interface CPSATInput {
     month: number;
     monthly_hours_norm: number;
     organization_settings: {
-        store_open_time?: string;
-        store_close_time?: string;
-        min_employees_per_shift?: number;
-        enable_trading_sundays?: boolean;
+        min_employees_per_shift?: number; // HC7 - minimum staff per shift
+        enable_trading_sundays?: boolean; // HC5 - allow work on trading Sundays
+        opening_hours?: Record<
+            string,
+            { open: string | null; close: string | null }
+        >; // HC7 - store hours by day of week
     };
     shift_templates: CPSATTemplate[];
     employees: CPSATEmployee[];
@@ -172,7 +168,12 @@ export const WEEKLY_HOURS_BY_TYPE: Record<string, number> = {
 
 /**
  * Konwertuje czas z HH:MM:SS do HH:MM
- * Python API expects HH:MM format
+ * Python API expects HH:MM format (no seconds needed)
+ *
+ * Dlaczego bez sekund?
+ * • CP-SAT operuje na minutach (integer scaling)
+ * • Sekundy są zbędne dla planowania zmian
+ * • Zmniejsza rozmiar danych przesyłanych do API
  */
 export function formatTime(time: string): string {
     if (!time) return "00:00";
@@ -314,30 +315,42 @@ export function transformTemplateToPython(tmpl: ShiftTemplate): PythonTemplate {
     return {
         id: tmpl.id,
         name: tmpl.name,
-        start_time: formatTime(tmpl.start_time),
-        end_time: formatTime(tmpl.end_time),
+        start_time: formatTime(tmpl.start_time), // Always HH:MM
+        end_time: formatTime(tmpl.end_time), // Always HH:MM
         break_minutes: tmpl.break_minutes || 0,
         days_of_week: tmpl.applicable_days || [],
         is_weekend: false, // Can calculate based on applicable_days if needed
         min_employees: tmpl.min_employees || 1,
         max_employees: tmpl.max_employees || null,
-        color: tmpl.color || "#3b82f6",
+        // color omitted - UI only
     };
 }
 
 /**
  * Konwertuje pracownika do formatu CP-SAT
  */
-export function transformEmployeeToCPSAT(emp: EmployeeWithData): CPSATEmployee {
+export function transformEmployeeToCPSAT(
+    emp: EmployeeWithData,
+    monthlyHoursNorm: number,
+): CPSATEmployee {
+    // Oblicz max_hours (używane w SC1 i HC10)
+    const { maxHours } = calculateMaxMonthlyHours(
+        emp.employment_type,
+        emp.custom_hours,
+        monthlyHoursNorm,
+        0, // totalWorkableDays not needed for this calculation
+    );
+
     return {
         id: emp.id,
         first_name: emp.first_name,
         last_name: emp.last_name,
-        position: emp.position,
         employment_type: emp.employment_type || "full",
+        max_hours: maxHours,
         custom_hours: emp.custom_hours,
         is_active: emp.is_active !== false,
-        color: emp.color,
+        // position omitted - SC3 disabled, all employees treated equally
+        // color omitted - UI only
     };
 }
 
@@ -348,13 +361,13 @@ export function transformTemplateToCPSAT(tmpl: ShiftTemplate): CPSATTemplate {
     return {
         id: tmpl.id,
         name: tmpl.name,
-        start_time: formatTime(tmpl.start_time),
-        end_time: formatTime(tmpl.end_time),
+        start_time: formatTime(tmpl.start_time), // Always HH:MM
+        end_time: formatTime(tmpl.end_time), // Always HH:MM
         break_minutes: tmpl.break_minutes || 0,
         min_employees: tmpl.min_employees || 1,
         max_employees: tmpl.max_employees,
-        color: tmpl.color,
         applicable_days: tmpl.applicable_days,
+        // color omitted - UI only
     };
 }
 
@@ -388,19 +401,8 @@ export function transformInputForPython(input: SchedulerInput): PythonInput {
         ),
         templates: input.templates.map(transformTemplateToPython),
         settings: {
-            store_open_time: input.settings.store_open_time
-                ? formatTime(input.settings.store_open_time)
-                : "08:00",
-            store_close_time: input.settings.store_close_time
-                ? formatTime(input.settings.store_close_time)
-                : "20:00",
-            work_days_per_week: 5,
-            enforce_daily_rest: true,
-            enforce_weekly_rest: true,
-            max_consecutive_work_days: 6,
-            min_staff_per_shift: input.settings.min_employees_per_shift || 1,
-            max_sunday_shifts_per_month: 2,
-            balance_shift_distribution: true,
+            // Empty - Python Genetic API (deprecated) doesn't use these
+            // Kept for backwards compatibility only
         },
         holidays: input.holidays.map((hol) => ({
             date: hol.date,
@@ -435,19 +437,67 @@ export function transformInputForCPSAT(input: SchedulerInput): CPSATInput {
         month: input.month,
         monthly_hours_norm: monthlyHoursNorm,
         organization_settings: {
-            // ⚠️ IMPORTANT: These should come from input.settings (from database)
-            store_open_time: input.settings.store_open_time
-                ? formatTime(input.settings.store_open_time)
-                : "08:00",
-            store_close_time: input.settings.store_close_time
-                ? formatTime(input.settings.store_close_time)
-                : "20:00",
+            // Only fields ACTUALLY used by Python scheduler_optimizer.py:
             min_employees_per_shift:
-                input.settings.min_employees_per_shift || 1,
-            enable_trading_sundays: input.tradingSundays.length > 0,
+                input.settings.min_employees_per_shift || 1, // Used in HC7
+            enable_trading_sundays: input.tradingSundays.length > 0, // Used in HC5
+            opening_hours: {
+                // Used in HC7 for continuous coverage
+                monday: {
+                    open: input.settings.store_open_time
+                        ? formatTime(input.settings.store_open_time)
+                        : "08:00",
+                    close: input.settings.store_close_time
+                        ? formatTime(input.settings.store_close_time)
+                        : "20:00",
+                },
+                tuesday: {
+                    open: input.settings.store_open_time
+                        ? formatTime(input.settings.store_open_time)
+                        : "08:00",
+                    close: input.settings.store_close_time
+                        ? formatTime(input.settings.store_close_time)
+                        : "20:00",
+                },
+                wednesday: {
+                    open: input.settings.store_open_time
+                        ? formatTime(input.settings.store_open_time)
+                        : "08:00",
+                    close: input.settings.store_close_time
+                        ? formatTime(input.settings.store_close_time)
+                        : "20:00",
+                },
+                thursday: {
+                    open: input.settings.store_open_time
+                        ? formatTime(input.settings.store_open_time)
+                        : "08:00",
+                    close: input.settings.store_close_time
+                        ? formatTime(input.settings.store_close_time)
+                        : "20:00",
+                },
+                friday: {
+                    open: input.settings.store_open_time
+                        ? formatTime(input.settings.store_open_time)
+                        : "08:00",
+                    close: input.settings.store_close_time
+                        ? formatTime(input.settings.store_close_time)
+                        : "20:00",
+                },
+                saturday: {
+                    open: input.settings.store_open_time
+                        ? formatTime(input.settings.store_open_time)
+                        : "08:00",
+                    close: input.settings.store_close_time
+                        ? formatTime(input.settings.store_close_time)
+                        : "16:00",
+                },
+                sunday: { open: null, close: null }, // Closed unless trading_sunday
+            },
         },
         shift_templates: input.templates.map(transformTemplateToCPSAT),
-        employees: input.employees.map(transformEmployeeToCPSAT),
+        employees: input.employees.map((emp) =>
+            transformEmployeeToCPSAT(emp, monthlyHoursNorm),
+        ),
         employee_preferences: input.employees
             .filter((emp) => emp.preferences)
             .map((emp) => ({
