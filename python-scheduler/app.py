@@ -45,7 +45,7 @@ def health_check():
         'status': 'healthy',
         'service': 'calenda-schedule-python-scheduler',
         'timestamp': datetime.now().isoformat(),
-        'version': '2.0.0-cpsat'
+        'version': '3.0.0-cpsat-pro'
     })
 
 
@@ -554,22 +554,31 @@ def get_info():
     """Informacje o optimizer i jego możliwościach."""
     return jsonify({
         'name': 'Calenda Schedule CP-SAT Optimizer',
-        'version': '2.0.0',
+        'version': '2.1.0',  # Zwiększona wersja (HC11-HC13)
         'solver': 'Google OR-Tools CP-SAT',
         'capabilities': {
             'hard_constraints': [
-                'No overlapping shifts',
-                'Employee absences compliance',
-                'Shift staffing requirements',
-                'Daily rest (11h minimum)',
-                'Trading sundays compliance',
-                'Maximum consecutive work days'
+                'No overlapping shifts (HC1)',
+                'Max 48h per week (HC2 - Art. 131 KP)',
+                'Min 11h daily rest (HC3 - Art. 132 KP)',
+                'Max consecutive days (HC4 - Art. 133 KP)',
+                'Trading sundays compliance (HC5)',
+                'Employee absences (HC6)',
+                'Shift staffing requirements (HC7)',
+                'Daily coverage (HC9)',
+                'Target hours EXACT (HC10)',
+                'Weekly rest 35h (HC11 - Art. 133 KP)',
+                'Free sunday requirement (HC12 - Art. 151^10 KP)',
+                'Fair weekend distribution HARD (HC13)'
             ],
             'soft_constraints': [
-                'Employment type hours optimization',
-                'Time preferences matching',
-                'Manager presence on shifts',
-                'Balanced shift distribution'
+                'Employment type hours optimization (SC1)',
+                'Time preferences matching (SC2)',
+                'Manager presence on shifts (SC3)',
+                'Balanced shift distribution (SC4)',
+                'Fair weekend distribution soft (SC5)',
+                'Balanced daily staffing (SC6)',
+                'Fair monthly distribution (SC7)'
             ]
         },
         'limits': {
@@ -577,6 +586,13 @@ def get_info():
             'max_shift_templates': 50,
             'max_days': 31,
             'default_solve_time_seconds': 300
+        },
+        'golden_rules': {
+            'integer_only': True,
+            'target_hours_exact': True,
+            'weekly_rest_35h': True,
+            'free_sunday': True,
+            'fair_weekends_hard': True
         }
     })
 

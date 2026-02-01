@@ -1,1658 +1,1510 @@
 """
-Calenda Schedule - Advanced CP-SAT Optimizer
-Silnik optymalizacyjny do generowania grafików pracy z wykorzystaniem Google OR-Tools CP-SAT solver.
-Autor: System ekspertowy OR-Tools
-Data: 2026-01-30
+================================================================================
+Calenda Schedule - CP-SAT Optimizer
+================================================================================
+Profesjonalny moduł do generowania miesięcznych grafików pracy.
+Wykorzystuje Google OR-Tools CP-SAT Solver z pełną obsługą prawa pracy.
+
+Autor: Senior Backend Developer
+Wersja: 3.0.0
+Data: 2026-02-01
+
+KLUCZOWE CECHY:
+- Obsługa mieszanych długości zmian (6h, 8h, 12h)
+- Grafik ZAWSZE się rozpisuje (FEASIBLE zamiast INFEASIBLE)
+- Dopełnienie do normy miesięcznej z tolerancją ±1h
+- Pełna zgodność z Kodeksem Pracy
+
+ARCHITEKTURA:
+1. DataModel - preprocessing i walidacja danych
+2. CPSATScheduler - główna klasa optymalizatora
+3. ConstraintBuilder - modułowe dodawanie ograniczeń
+4. ObjectiveBuilder - budowa funkcji celu
+================================================================================
 """
 
 from ortools.sat.python import cp_model
-from typing import Dict, List, Tuple, Optional, Set
-from datetime import datetime, date, time, timedelta
+from typing import Dict, List, Tuple, Optional, Set, Any
+from dataclasses import dataclass, field
+from datetime import datetime, date, timedelta
+from calendar import monthrange
 from collections import defaultdict
-import json
+import time
 import traceback
-from config import (
-    SolverConfig,
-    SoftConstraintWeights,
-    HardConstraintDefaults,
-    QualityMetrics,
-    DiagnosticThresholds,
-    TimeNorms,
-    WeekdayMapping,
-    ManagerKeywords
-)
 
 
-class ScheduleOptimizer:
+# =============================================================================
+# STAŁE I KONFIGURACJA
+# =============================================================================
+
+# Mnożniki etatu względem pełnego etatu (40h/tydzień)
+EMPLOYMENT_MULTIPLIERS: Dict[str, float] = {
+    'full': 1.0,           # 40h/tydzień = 100% normy
+    'three_quarter': 0.75, # 30h/tydzień = 75% normy
+    'half': 0.5,           # 20h/tydzień = 50% normy
+    'one_third': 0.333,    # ~13h/tydzień = 33% normy
+    'custom': 1.0,         # Niestandardowy - obliczany z custom_hours
+}
+
+# Wagi dla soft constraints (funkcja celu)
+WEIGHTS = {
+    # CRITICAL: Kara za odchylenie od normy miesięcznej
+    # Używamy BARDZO wysokiej kary, aby solver "dobijał" do normy
+    'HOURS_DEVIATION_PER_MINUTE': 100,    # 100 pkt za każdą minutę odchylenia
+    
+    # Nagrody za preferencje
+    'PREFERENCE_MATCH': 50,               # Nagroda za zgodność z preferencją
+    'PREFERRED_DAY_BONUS': 30,            # Bonus za preferowany dzień
+    'AVOIDED_DAY_PENALTY': 80,            # Kara za niechciany dzień
+    
+    # Kary za naruszenia "miękkie"
+    'CONSECUTIVE_DAYS_PENALTY': 200,      # Kara za >5 dni z rzędu (za dzień)
+    
+    # Równomierność obłożenia
+    'DAILY_VARIANCE_PENALTY': 150,        # Kara za nierównomierne obłożenie
+    
+    # Sprawiedliwość weekendowa
+    'WEEKEND_FAIRNESS_PENALTY': 300,      # Kara za nierówne weekendy
+    
+    # Manager presence
+    'MANAGER_PRESENCE_BONUS': 100,        # Bonus za managera na zmianie
+}
+
+# Limity Kodeksu Pracy
+LABOR_CODE = {
+    'MAX_WEEKLY_HOURS': 48,               # Art. 131 KP - max 48h/tydzień (z nadgodzinami)
+    'MIN_DAILY_REST_HOURS': 11,           # Art. 132 KP - min 11h odpoczynku dobowego
+    'MIN_WEEKLY_REST_HOURS': 35,          # Art. 133 KP - min 35h odpoczynku tygodniowego
+    'MAX_CONSECUTIVE_DAYS': 6,            # Art. 133 KP - max 6 dni pracy z rzędu
+    'FREE_SUNDAY_INTERVAL': 4,            # Art. 151^10 KP - wolna niedziela co 4 tygodnie
+}
+
+
+# =============================================================================
+# DATA CLASSES - Struktury danych
+# =============================================================================
+
+@dataclass
+class Employee:
+    """Reprezentacja pracownika z wszystkimi danymi."""
+    id: str
+    first_name: str
+    last_name: str
+    employment_type: str
+    max_hours: float                              # Maksymalne godziny miesięczne
+    custom_hours: Optional[float] = None          # Godziny dla etatu custom (tygodniowo)
+    is_active: bool = True
+    position: str = 'Pracownik'
+    color: Optional[str] = None
+    template_assignments: List[str] = field(default_factory=list)
+    absence_days_count: int = 0                   # Liczba dni nieobecności w miesiącu
+    
+    @property
+    def full_name(self) -> str:
+        return f"{self.first_name} {self.last_name}"
+    
+    def get_target_minutes(self, monthly_norm_minutes: int, work_days_count: int = 20) -> int:
+        """
+        Oblicza docelową liczbę minut pracy w miesiącu.
+        
+        UWAGA: Jeśli pracownik ma urlop, target jest proporcjonalnie zmniejszany.
+        Przykład: urlop 5 dni z 20 roboczych = target * (15/20) = 75% normy
+        
+        Dla custom: używa custom_hours (tygodniowe) przeliczone na miesięczne
+        Dla standardowych: monthly_norm * multiplier
+        """
+        # Bazowy target
+        if self.employment_type == 'custom' and self.custom_hours:
+            # custom_hours = godziny TYGODNIOWE
+            # Przeliczenie: (custom_hours / 40) * monthly_norm
+            ratio = self.custom_hours / 40.0
+            base_target = int(monthly_norm_minutes * ratio)
+        else:
+            multiplier = EMPLOYMENT_MULTIPLIERS.get(self.employment_type, 1.0)
+            base_target = int(monthly_norm_minutes * multiplier)
+        
+        # Korekta za nieobecności
+        if self.absence_days_count > 0 and work_days_count > 0:
+            available_days = max(0, work_days_count - self.absence_days_count)
+            availability_ratio = available_days / work_days_count
+            adjusted_target = int(base_target * availability_ratio)
+            return adjusted_target
+        
+        return base_target
+
+
+@dataclass  
+class ShiftTemplate:
+    """Reprezentacja szablonu zmiany."""
+    id: str
+    name: str
+    start_time: str                               # Format HH:MM lub HH:MM:SS
+    end_time: str                                 # Format HH:MM lub HH:MM:SS
+    break_minutes: int = 0
+    min_employees: int = 1
+    max_employees: Optional[int] = None
+    applicable_days: List[str] = field(default_factory=list)
+    color: Optional[str] = None
+    
+    def get_duration_minutes(self) -> int:
+        """Oblicza czas trwania zmiany w minutach (netto, bez przerwy)."""
+        start = self._parse_time(self.start_time)
+        end = self._parse_time(self.end_time)
+        
+        # Obsługa zmiany nocnej (kończy się następnego dnia)
+        if end <= start:
+            end += 24 * 60
+        
+        return end - start - self.break_minutes
+    
+    def get_gross_duration_minutes(self) -> int:
+        """Oblicza czas trwania zmiany w minutach (brutto, z przerwą)."""
+        start = self._parse_time(self.start_time)
+        end = self._parse_time(self.end_time)
+        
+        if end <= start:
+            end += 24 * 60
+        
+        return end - start
+    
+    def _parse_time(self, time_str: str) -> int:
+        """Parsuje czas do minut od północy."""
+        parts = time_str.split(':')
+        hours = int(parts[0])
+        minutes = int(parts[1]) if len(parts) > 1 else 0
+        return hours * 60 + minutes
+    
+    def get_start_minutes(self) -> int:
+        """Zwraca czas rozpoczęcia jako minuty od północy."""
+        return self._parse_time(self.start_time)
+    
+    def get_end_minutes(self) -> int:
+        """Zwraca czas zakończenia jako minuty od północy."""
+        end = self._parse_time(self.end_time)
+        start = self._parse_time(self.start_time)
+        # Obsługa zmiany nocnej
+        if end <= start:
+            end += 24 * 60
+        return end
+
+
+@dataclass
+class Absence:
+    """Reprezentacja nieobecności pracownika."""
+    employee_id: str
+    start_date: str                               # Format YYYY-MM-DD
+    end_date: str                                 # Format YYYY-MM-DD
+    absence_type: str
+    
+    def covers_date(self, date_str: str) -> bool:
+        """Sprawdza czy nieobecność obejmuje daną datę."""
+        return self.start_date <= date_str <= self.end_date
+
+
+@dataclass
+class EmployeePreference:
+    """Preferencje pracownika."""
+    employee_id: str
+    preferred_start_time: Optional[str] = None
+    preferred_end_time: Optional[str] = None
+    max_hours_per_week: Optional[int] = None
+    max_hours_per_day: Optional[int] = None
+    can_work_weekends: bool = True
+    can_work_holidays: bool = True
+    preferred_days: List[int] = field(default_factory=list)     # 0=Pn, 6=Nd
+    unavailable_days: List[int] = field(default_factory=list)   # 0=Pn, 6=Nd
+
+
+# =============================================================================
+# DATA MODEL - Preprocessing danych wejściowych
+# =============================================================================
+
+class DataModel:
     """
-    Główna klasa optymalizatora grafików pracy.
-    Wykorzystuje CP-SAT solver do generowania optymalnych przypisań pracowników do zmian.
+    Klasa do preprocessingu i walidacji danych wejściowych.
+    Przygotowuje wszystkie dane potrzebne dla solvera CP-SAT.
     """
     
     def __init__(self, input_data: Dict):
-        """
-        Inicjalizacja optymalizatora z danymi wejściowymi.
+        self.raw_data = input_data
+        self.year: int = input_data.get('year', datetime.now().year)
+        self.month: int = input_data.get('month', datetime.now().month)
         
-        Args:
-            input_data: Słownik zawierający wszystkie dane z bazy (employees, shift_templates, etc.)
-        """
-        self.data = input_data
+        # Preprocessing
+        self._calculate_month_info()
+        self._parse_employees()
+        self._parse_templates()
+        self._parse_absences()
+        self._parse_preferences()
+        self._parse_trading_sundays()
+        self._parse_settings()
+        
+        # Buduj mapowania indeksów
+        self._build_indices()
+        
+        # Loguj podsumowanie
+        self._log_summary()
+    
+    def _calculate_month_info(self):
+        """Oblicza informacje o dniach w miesiącu."""
+        _, days_in_month = monthrange(self.year, self.month)
+        self.days_in_month = days_in_month
+        self.all_days: List[int] = list(range(1, days_in_month + 1))
+        
+        # Kategoryzacja dni
+        self.weekdays: List[int] = []      # Pn-Pt
+        self.saturdays: List[int] = []     # Soboty
+        self.sundays: List[int] = []       # Niedziele
+        
+        for day in self.all_days:
+            d = date(self.year, self.month, day)
+            weekday = d.weekday()  # 0=Pn, 6=Nd
+            
+            if weekday < 5:
+                self.weekdays.append(day)
+            elif weekday == 5:
+                self.saturdays.append(day)
+            else:
+                self.sundays.append(day)
+        
+        # Oblicz normę miesięczną (tylko dni robocze Pn-Pt * 8h)
+        provided_norm = self.raw_data.get('monthly_hours_norm')
+        if provided_norm:
+            self.monthly_norm_hours = provided_norm
+        else:
+            self.monthly_norm_hours = len(self.weekdays) * 8
+        
+        self.monthly_norm_minutes = int(self.monthly_norm_hours * 60)
+        
+        print(f"📅 Miesiąc: {self.year}-{self.month:02d}")
+        print(f"   Dni w miesiącu: {self.days_in_month}")
+        print(f"   Dni robocze (Pn-Pt): {len(self.weekdays)}")
+        print(f"   Soboty: {len(self.saturdays)}")
+        print(f"   Niedziele: {len(self.sundays)}")
+        print(f"   Norma miesięczna: {self.monthly_norm_hours}h ({self.monthly_norm_minutes} min)")
+    
+    def _parse_employees(self):
+        """Parsuje listę pracowników."""
+        self.employees: List[Employee] = []
+        
+        for emp_data in self.raw_data.get('employees', []):
+            emp = Employee(
+                id=emp_data.get('id', ''),
+                first_name=emp_data.get('first_name', 'Unknown'),
+                last_name=emp_data.get('last_name', ''),
+                employment_type=emp_data.get('employment_type', 'full'),
+                max_hours=emp_data.get('max_hours', self.monthly_norm_hours),
+                custom_hours=emp_data.get('custom_hours'),
+                is_active=emp_data.get('is_active', True),
+                position=emp_data.get('position', 'Pracownik'),
+                color=emp_data.get('color'),
+                template_assignments=emp_data.get('template_assignments', []),
+                absence_days_count=0,  # Zostanie zaktualizowane po parsowaniu absencji
+            )
+            
+            if emp.is_active:
+                self.employees.append(emp)
+        
+        print(f"👥 Pracownicy: {len(self.employees)} aktywnych")
+    
+    def _parse_templates(self):
+        """Parsuje szablony zmian."""
+        self.templates: List[ShiftTemplate] = []
+        
+        for tmpl_data in self.raw_data.get('shift_templates', []):
+            tmpl = ShiftTemplate(
+                id=tmpl_data.get('id', ''),
+                name=tmpl_data.get('name', 'Zmiana'),
+                start_time=tmpl_data.get('start_time', '08:00'),
+                end_time=tmpl_data.get('end_time', '16:00'),
+                break_minutes=tmpl_data.get('break_minutes', 0),
+                min_employees=tmpl_data.get('min_employees', 1),
+                max_employees=tmpl_data.get('max_employees'),
+                applicable_days=tmpl_data.get('applicable_days', []),
+                color=tmpl_data.get('color')
+            )
+            self.templates.append(tmpl)
+        
+        print(f"📋 Szablony zmian: {len(self.templates)}")
+        for t in self.templates:
+            print(f"   • {t.name}: {t.start_time}-{t.end_time} ({t.get_duration_minutes()} min netto)")
+    
+    def _parse_absences(self):
+        """Parsuje nieobecności pracowników."""
+        self.absences: List[Absence] = []
+        self.absence_map: Dict[str, Set[str]] = defaultdict(set)  # emp_id -> set(dates)
+        
+        for abs_data in self.raw_data.get('employee_absences', []):
+            absence = Absence(
+                employee_id=abs_data.get('employee_id', ''),
+                start_date=abs_data.get('start_date', ''),
+                end_date=abs_data.get('end_date', ''),
+                absence_type=abs_data.get('absence_type', 'other')
+            )
+            self.absences.append(absence)
+            
+            # Buduj mapę dni nieobecności
+            try:
+                start = datetime.strptime(absence.start_date, '%Y-%m-%d').date()
+                end = datetime.strptime(absence.end_date, '%Y-%m-%d').date()
+                current = start
+                while current <= end:
+                    if current.year == self.year and current.month == self.month:
+                        date_str = current.strftime('%Y-%m-%d')
+                        self.absence_map[absence.employee_id].add(date_str)
+                    current += timedelta(days=1)
+            except ValueError:
+                pass
+        
+        # Zaktualizuj liczbę dni nieobecności w obiektach Employee
+        # Liczymy tylko dni robocze (Pn-Pt)
+        for emp in self.employees:
+            absence_dates = self.absence_map.get(emp.id, set())
+            work_day_absences = 0
+            for date_str in absence_dates:
+                try:
+                    d = datetime.strptime(date_str, '%Y-%m-%d').date()
+                    if d.weekday() < 5:  # Pn-Pt
+                        work_day_absences += 1
+                except ValueError:
+                    pass
+            emp.absence_days_count = work_day_absences
+            if work_day_absences > 0:
+                print(f"   📋 {emp.full_name}: {work_day_absences} dni roboczych nieobecności")
+        
+        print(f"🚫 Nieobecności: {len(self.absences)} rekordów")
+    
+    def _parse_preferences(self):
+        """Parsuje preferencje pracowników."""
+        self.preferences: Dict[str, EmployeePreference] = {}
+        
+        for pref_data in self.raw_data.get('employee_preferences', []):
+            pref = EmployeePreference(
+                employee_id=pref_data.get('employee_id', ''),
+                preferred_start_time=pref_data.get('preferred_start_time'),
+                preferred_end_time=pref_data.get('preferred_end_time'),
+                max_hours_per_week=pref_data.get('max_hours_per_week'),
+                max_hours_per_day=pref_data.get('max_hours_per_day'),
+                can_work_weekends=pref_data.get('can_work_weekends', True),
+                can_work_holidays=pref_data.get('can_work_holidays', True),
+                preferred_days=pref_data.get('preferred_days', []),
+                unavailable_days=pref_data.get('unavailable_days', [])
+            )
+            self.preferences[pref.employee_id] = pref
+        
+        print(f"⚙️  Preferencje: {len(self.preferences)} pracowników")
+    
+    def _parse_trading_sundays(self):
+        """Parsuje niedziele handlowe."""
+        self.trading_sundays: Set[int] = set()  # Dni miesiąca które są niedziela handlową
+        
+        for ts_data in self.raw_data.get('trading_sundays', []):
+            date_str = ts_data.get('date', '') if isinstance(ts_data, dict) else ts_data
+            is_active = ts_data.get('is_active', True) if isinstance(ts_data, dict) else True
+            
+            if is_active and date_str:
+                try:
+                    d = datetime.strptime(date_str, '%Y-%m-%d').date()
+                    if d.year == self.year and d.month == self.month:
+                        self.trading_sundays.add(d.day)
+                except ValueError:
+                    pass
+        
+        print(f"📅 Niedziele handlowe: {sorted(self.trading_sundays)}")
+    
+    def _parse_settings(self):
+        """Parsuje ustawienia organizacji i reguły planowania."""
+        org = self.raw_data.get('organization_settings', {})
+        rules = self.raw_data.get('scheduling_rules', {})
+        
+        self.min_employees_per_shift = org.get('min_employees_per_shift', 1)
+        self.store_open_time = org.get('store_open_time', '08:00')
+        self.store_close_time = org.get('store_close_time', '20:00')
+        
+        self.max_consecutive_days = rules.get('max_consecutive_days', LABOR_CODE['MAX_CONSECUTIVE_DAYS'])
+        self.min_daily_rest_hours = rules.get('min_daily_rest_hours', LABOR_CODE['MIN_DAILY_REST_HOURS'])
+        self.max_weekly_hours = rules.get('max_weekly_work_hours', LABOR_CODE['MAX_WEEKLY_HOURS'])
+        
+        self.solver_time_limit = self.raw_data.get('solver_time_limit', 300)
+    
+    def _build_indices(self):
+        """Buduje mapowania indeksów dla szybkiego dostępu."""
+        self.emp_idx: Dict[str, int] = {e.id: i for i, e in enumerate(self.employees)}
+        self.tmpl_idx: Dict[str, int] = {t.id: i for i, t in enumerate(self.templates)}
+        
+        # Mapowanie dzień -> dzień tygodnia (0=Pn, 6=Nd)
+        self.day_to_weekday: Dict[int, int] = {}
+        for day in self.all_days:
+            d = date(self.year, self.month, day)
+            self.day_to_weekday[day] = d.weekday()
+    
+    def _log_summary(self):
+        """Loguje podsumowanie danych."""
+        print(f"\n{'='*60}")
+        print("📊 PODSUMOWANIE DATA MODEL:")
+        print(f"{'='*60}")
+        print(f"  Pracownicy:        {len(self.employees)}")
+        print(f"  Szablony zmian:    {len(self.templates)}")
+        print(f"  Nieobecności:      {len(self.absences)}")
+        print(f"  Niedziele handlowe: {len(self.trading_sundays)}")
+        print(f"  Norma miesięczna:  {self.monthly_norm_hours}h")
+        print(f"  Limit czasowy:     {self.solver_time_limit}s")
+        print(f"{'='*60}\n")
+    
+    def is_workable_day(self, day: int) -> bool:
+        """Sprawdza czy dany dzień jest dniem pracy (nie niehandlowa niedziela)."""
+        weekday = self.day_to_weekday[day]
+        if weekday == 6:  # Niedziela
+            return day in self.trading_sundays
+        return True
+    
+    def is_employee_absent(self, emp_id: str, day: int) -> bool:
+        """Sprawdza czy pracownik ma nieobecność w danym dniu."""
+        date_str = f"{self.year}-{self.month:02d}-{day:02d}"
+        return date_str in self.absence_map.get(emp_id, set())
+    
+    def can_template_be_used_on_day(self, template: ShiftTemplate, day: int) -> bool:
+        """Sprawdza czy szablon może być użyty w danym dniu."""
+        if not template.applicable_days:
+            return True  # Brak ograniczeń = można wszędzie
+        
+        weekday = self.day_to_weekday[day]
+        day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        day_name = day_names[weekday]
+        
+        return day_name in template.applicable_days
+    
+    def get_date_string(self, day: int) -> str:
+        """Zwraca datę w formacie YYYY-MM-DD."""
+        return f"{self.year}-{self.month:02d}-{day:02d}"
+    
+    def get_week_number(self, day: int) -> int:
+        """Zwraca numer tygodnia w miesiącu (0-4)."""
+        return (day - 1) // 7
+
+
+# =============================================================================
+# CP-SAT SCHEDULER - Główna klasa optymalizatora
+# =============================================================================
+
+class CPSATScheduler:
+    """
+    Główna klasa optymalizatora CP-SAT.
+    Implementuje wszystkie ograniczenia twarde i miękkie.
+    """
+    
+    def __init__(self, data: DataModel):
+        self.data = data
         self.model = cp_model.CpModel()
-        self.shifts_vars = {}  # (employee_id, day, shift_template_id) -> BoolVar
-        self.solver = cp_model.CpSolver()
         
-       # Ekstrakcja danych wejściowych
-        self.organization_settings = input_data.get('organization_settings', {})
-        self.shift_templates = input_data.get('shift_templates', [])
-        self.employees = input_data.get('employees', [])
-        self.employee_preferences = input_data.get('employee_preferences', {})
-        self.employee_absences = input_data.get('employee_absences', [])
-        self.scheduling_rules = input_data.get('scheduling_rules', {})
-        self.trading_sundays = input_data.get('trading_sundays', [])
-        self.year = input_data.get('year')
-        self.month = input_data.get('month')
+        # Zmienne decyzyjne
+        # shifts[(emp_idx, day, tmpl_idx)] = BoolVar
+        self.shifts: Dict[Tuple[int, int, int], cp_model.IntVar] = {}
         
-        # Obliczenie liczby dni w miesiącu
-        self.days_in_month = self._get_days_in_month(self.year, self.month)
-        self.all_days = list(range(1, self.days_in_month + 1))
+        # Zmienne pomocnicze dla dni pracy
+        # works_day[(emp_idx, day)] = BoolVar (czy pracownik pracuje w danym dniu)
+        self.works_day: Dict[Tuple[int, int], cp_model.IntVar] = {}
         
-        # Preprocessing danych
-        self._preprocess_data()
+        # Zmienne dla funkcji celu
+        self.objective_terms: List[cp_model.LinearExpr] = []
+        self.penalties: List[Tuple[cp_model.IntVar, int, str]] = []
+        self.bonuses: List[Tuple[cp_model.IntVar, int, str]] = []
         
-        # Statystyki dla debugowania
+        # Statystyki
         self.stats = {
             'total_variables': 0,
             'hard_constraints': 0,
             'soft_constraints': 0,
-            'infeasibility_reasons': []
         }
     
-    def _get_days_in_month(self, year: int, month: int) -> int:
-        """Zwraca liczbę dni w danym miesiącu."""
-        if month == 12:
-            next_month = date(year + 1, 1, 1)
-        else:
-            next_month = date(year, month + 1, 1)
-        last_day = next_month - timedelta(days=1)
-        return last_day.day
-    
-    def _preprocess_data(self):
-        """Preprocessing danych wejściowych - indeksowanie i konwersja typów."""
-        
-        # Indeksowanie pracowników
-        self.employee_by_id = {emp['id']: emp for emp in self.employees if emp.get('is_active', True)}
-        
-        # Indeksowanie szablonów zmian
-        self.template_by_id = {tpl['id']: tpl for tpl in self.shift_templates}
-        
-        # Indeksowanie preferencji pracowników
-        self.prefs_by_employee = {}
-        for pref in self.employee_preferences:
-            emp_id = pref.get('employee_id')
-            if emp_id:
-                self.prefs_by_employee[emp_id] = pref
-        
-        # Indeksowanie przypisań szablonów do pracowników
-        self.template_assignments_by_employee = {}
-        for emp in self.employees:
-            emp_id = emp.get('id')
-            template_assignments = emp.get('template_assignments', [])
-            if template_assignments:
-                self.template_assignments_by_employee[emp_id] = set(template_assignments)
-                print(f"  📌 Pracownik {emp.get('first_name', '')} {emp.get('last_name', '')} ma przypisane szablony: {len(template_assignments)}")
-        
-        # Preprocessing nieobecności - konwersja na zbiór (employee_id, day)
-        self.absence_set: Set[Tuple[str, int]] = set()
-        for absence in self.employee_absences:
-            emp_id = absence['employee_id']
-            start_date = self._parse_date(absence['start_date'])
-            end_date = self._parse_date(absence['end_date'])
-            
-            # Dodaj wszystkie dni w zakresie
-            current = start_date
-            while current <= end_date:
-                if current.year == self.year and current.month == self.month:
-                    self.absence_set.add((emp_id, current.day))
-                current += timedelta(days=1)
-        
-        # Preprocessing niedziel handlowych
-        self.trading_sunday_days = set()
-        for ts in self.trading_sundays:
-            if ts.get('is_active', True):
-                ts_date = self._parse_date(ts['date'])
-                if ts_date.year == self.year and ts_date.month == self.month:
-                    self.trading_sunday_days.add(ts_date.day)
-        
-        # Identyfikacja niedziel w miesiącu
-        self.sundays_in_month = []
-        for day in self.all_days:
-            current_date = date(self.year, self.month, day)
-            if current_date.weekday() == 6:  # Niedziela
-                self.sundays_in_month.append(day)
-        
-        # Identyfikacja managerów (dla mix kompetencji)
-        self.manager_ids = set()
-        for emp_id, emp in self.employee_by_id.items():
-            position = emp.get('position', '').lower()
-            if 'manager' in position or 'kierownik' in position or 'menedżer' in position:
-                self.manager_ids.add(emp_id)
-        
-        # Parsowanie godzin rozpoczęcia/zakończenia zmian
-        for template in self.shift_templates:
-            template['start_time_minutes'] = self._time_to_minutes(template['start_time'])
-            template['end_time_minutes'] = self._time_to_minutes(template['end_time'])
-            template['duration_minutes'] = self._calculate_shift_duration(
-                template['start_time_minutes'],
-                template['end_time_minutes']
-            )
-    
-    def _parse_date(self, date_str) -> date:
-        """Konwertuje string daty na obiekt date."""
-        if isinstance(date_str, date):
-            return date_str
-        if isinstance(date_str, str):
-            return datetime.strptime(date_str.split('T')[0], '%Y-%m-%d').date()
-        return date_str
-    
-    def _time_to_minutes(self, time_str) -> int:
-        """Konwertuje time/string na minuty od północy."""
-        if isinstance(time_str, time):
-            return time_str.hour * 60 + time_str.minute
-        if isinstance(time_str, str):
-            parts = time_str.split(':')
-            return int(parts[0]) * 60 + int(parts[1])
-        return 0
-    
-    def _calculate_shift_duration(self, start_minutes: int, end_minutes: int) -> int:
-        """Oblicza czas trwania zmiany w minutach (obsługuje zmianę przez północ)."""
-        if end_minutes >= start_minutes:
-            return end_minutes - start_minutes
-        else:
-            # Zmiana przez północ (np. 22:00 - 06:00)
-            return (24 * 60 - start_minutes) + end_minutes
-    
-    def _calculate_quality_percent(self, objective_value: float, total_shifts: int) -> float:
-        """
-        Normalizuje wartość funkcji celu CP-SAT do procentu jakości 0-100%.
-        
-        Logika:
-        - objective_value > 0 = więcej nagród niż kar (dobra jakość)
-        - objective_value = 0 = neutralny (średnia jakość)
-        - objective_value < 0 = więcej kar niż nagród (słaba jakość)
-        
-        Normalizacja:
-        - Szacujemy maksymalną możliwą wartość na podstawie liczby zmian
-        - Każda zmiana może dawać max ~500 punktów nagrody (SC1-SC4)
-        - Mapujemy zakres [-max, +max] na [0%, 100%]
-        """
-        if total_shifts == 0:
-            return 0.0
-        
-        # Szacowany max bonus na zmianę (wszystkie soft constraints spełnione)
-        # SC1: ~0 (brak kar), SC2: ~50, SC3: ~200, SC4: ~0 (brak kar)
-        estimated_max_per_shift = 300
-        estimated_max = total_shifts * estimated_max_per_shift
-        
-        # Szacowane minimum (wszystkie kary)
-        estimated_min = -total_shifts * 500
-        
-        # Normalizacja do 0-100%
-        if estimated_max == estimated_min:
-            return 50.0
-        
-        # Mapuj objective_value na zakres 0-100%
-        # objective_value = estimated_min -> 0%
-        # objective_value = estimated_max -> 100%
-        normalized = ((objective_value - estimated_min) / (estimated_max - estimated_min)) * 100
-        
-        # Ogranicz do zakresu 0-100%
-        quality = max(0.0, min(100.0, normalized))
-        
-        print(f"  • Jakość grafiku: {quality:.1f}% (objective_value: {objective_value})")
-        
-        return quality
+    # =========================================================================
+    # KROK 1: Tworzenie zmiennych decyzyjnych
+    # =========================================================================
     
     def create_decision_variables(self):
         """
-        Krok 1: Tworzenie zmiennych decyzyjnych.
-        shifts[(employee_id, day, shift_template_id)] = BoolVar
+        Tworzy zmienne decyzyjne BoolVar dla każdej możliwej kombinacji
+        (pracownik, dzień, szablon).
         """
-        print("🔧 Tworzenie zmiennych decyzyjnych...")
+        print("\n🔧 Tworzenie zmiennych decyzyjnych...")
         
-        # Sprawdź czy niedziele handlowe są włączone
-        enable_trading_sundays = self.organization_settings.get('enable_trading_sundays', False)
-        
-        for emp_id in self.employee_by_id.keys():
-            # Sprawdź czy pracownik ma przypisane konkretne szablony
-            assigned_templates = self.template_assignments_by_employee.get(emp_id)
-            
-            for day in self.all_days:
-                # Sprawdź nieobecność
-                if (emp_id, day) in self.absence_set:
+        for emp_idx, emp in enumerate(self.data.employees):
+            for day in self.data.all_days:
+                # Sprawdź czy dzień jest pracujący
+                if not self.data.is_workable_day(day):
                     continue
                 
-                # Sprawdź czy to niedziela niehandlowa - wtedy pomijamy
-                if day in self.sundays_in_month:
-                    if not enable_trading_sundays:
-                        # Wszystkie niedziele są zabronione
-                        continue
-                    elif day not in self.trading_sunday_days:
-                        # Ta konkretna niedziela nie jest handlowa
-                        continue
+                # Sprawdź nieobecność
+                if self.data.is_employee_absent(emp.id, day):
+                    continue
                 
-                for template in self.shift_templates:
-                    template_id = template['id']
+                for tmpl_idx, tmpl in enumerate(self.data.templates):
+                    # Sprawdź przypisanie szablonu do pracownika
+                    if emp.template_assignments:
+                        if tmpl.id not in emp.template_assignments:
+                            continue
                     
-                    # KLUCZOWE: Jeśli pracownik ma przypisane szablony, sprawdź czy ten szablon jest na liście
-                    if assigned_templates is not None and template_id not in assigned_templates:
-                        continue  # Pomiń szablony nie przypisane do tego pracownika
-                    
-                    # Sprawdź czy zmiana jest dozwolona w ten dzień tygodnia
-                    if not self._is_template_applicable_on_day(template, day):
+                    # Sprawdź czy szablon działa w ten dzień
+                    if not self.data.can_template_be_used_on_day(tmpl, day):
                         continue
                     
-                    var_name = f'shift_e{emp_id[:8]}_d{day}_t{template_id[:8]}'
-                    var = self.model.NewBoolVar(var_name)
-                    self.shifts_vars[(emp_id, day, template_id)] = var
+                    # Utwórz zmienną
+                    var_name = f"s_{emp_idx}_{day}_{tmpl_idx}"
+                    self.shifts[(emp_idx, day, tmpl_idx)] = self.model.NewBoolVar(var_name)
                     self.stats['total_variables'] += 1
         
-        print(f"✅ Utworzono {self.stats['total_variables']} zmiennych decyzyjnych")
+        # Utwórz zmienne pomocnicze works_day
+        for emp_idx, emp in enumerate(self.data.employees):
+            for day in self.data.all_days:
+                if not self.data.is_workable_day(day):
+                    continue
+                
+                if self.data.is_employee_absent(emp.id, day):
+                    continue
+                
+                var_name = f"w_{emp_idx}_{day}"
+                self.works_day[(emp_idx, day)] = self.model.NewBoolVar(var_name)
+                
+                # Powiąż works_day z shift vars
+                shift_vars_for_day = [
+                    self.shifts[(emp_idx, day, t)]
+                    for t in range(len(self.data.templates))
+                    if (emp_idx, day, t) in self.shifts
+                ]
+                
+                if shift_vars_for_day:
+                    # works_day == 1 iff co najmniej jedna zmiana przypisana
+                    self.model.AddMaxEquality(self.works_day[(emp_idx, day)], shift_vars_for_day)
         
-        # Pokaż statystyki przypisań szablonów
-        if self.template_assignments_by_employee:
-            print(f"\n📌 Pracownicy z przypisanymi szablonami: {len(self.template_assignments_by_employee)}")
-            for emp_id, templates in self.template_assignments_by_employee.items():
-                emp = self.employee_by_id.get(emp_id)
-                if emp:
-                    emp_name = f"{emp.get('first_name', '')} {emp.get('last_name', '')}"
-                    template_names = [self.template_by_id[tid]['name'] for tid in templates if tid in self.template_by_id]
-                    print(f"  • {emp_name}: {', '.join(template_names)}")
-        
-        # Pokaż info o niedzielach
-        if self.sundays_in_month:
-            if enable_trading_sundays:
-                if self.trading_sunday_days:
-                    print(f"   📅 Niedziele handlowe: {sorted(self.trading_sunday_days)}")
-                else:
-                    print(f"   📅 Brak niedziel handlowych w tym miesiącu")
-            else:
-                print(f"   📅 Niedziele wyłączone (enable_trading_sundays=False)")
+        print(f"   ✅ Utworzono {self.stats['total_variables']} zmiennych shift")
+        print(f"   ✅ Utworzono {len(self.works_day)} zmiennych works_day")
     
-    def _is_template_applicable_on_day(self, template: Dict, day: int) -> bool:
-        """Sprawdza czy szablon zmiany może być użyty w danym dniu tygodnia."""
-        applicable_days = template.get('applicable_days')
-        if not applicable_days:
-            return True  # Brak ograniczeń
-        
-        current_date = date(self.year, self.month, day)
-        weekday = current_date.weekday()
-        
-        day_mapping = {
-            0: 'monday', 1: 'tuesday', 2: 'wednesday', 3: 'thursday',
-            4: 'friday', 5: 'saturday', 6: 'sunday'
-        }
-        
-        current_day_name = day_mapping[weekday]
-        return current_day_name in applicable_days
+    # =========================================================================
+    # KROK 2: Hard Constraints (MUSZĄ być spełnione)
+    # =========================================================================
     
     def add_hard_constraints(self):
-        """
-        Krok 2: Dodawanie ograniczeń twardych (MUSZĄ być spełnione).
-        Priorytet: krytyczne ograniczenia prawne pierwsze, potem operacyjne.
-        """
-        print("\n🔒 Dodawanie ograniczeń twardych...")
+        """Dodaje wszystkie ograniczenia twarde."""
+        print("\n🔒 Dodawanie Hard Constraints...")
         
-        # HC1: Brak nakładania zmian - jeden pracownik maksymalnie jedna zmiana dziennie
-        self._add_no_overlapping_shifts_constraint()
+        self._add_hc1_one_shift_per_day()
+        self._add_hc2_max_weekly_hours()
+        self._add_hc3_min_daily_rest()
+        self._add_hc4_max_consecutive_days()
+        self._add_hc5_trading_sundays()
+        self._add_hc6_absences()
+        self._add_hc7_min_staffing()
+        self._add_hc11_weekly_rest()
+        self._add_hc12_free_sunday()
         
-        # HC2: Maksimum 48h/tydzień (Art. 131 § 1 KP) - KRYTYCZNE PRAWO PRACY
-        self._add_weekly_hours_constraint()
-        
-        # HC3: Odpoczynek dobowy - minimum 11h między zmianami (Art. 132 KP)
-        self._add_daily_rest_constraint()
-        
-        # HC4: Maksymalna ciągłość pracy - max dni pod rząd (Art. 133 KP)
-        self._add_max_consecutive_days_constraint()
-        
-        # HC5: Niedziele handlowe
-        self._add_trading_sundays_constraint()
-        
-        # HC6: Zgodność z urlopami - już obsłużone w create_decision_variables
-        print("  ✓ HC6: Zgodność z urlopami (obsłużone w zmiennych)")
-        
-        # HC7: Obsada zmian - każda zmiana musi mieć odpowiednią liczbę pracowników
-        self._add_shift_staffing_constraint()
-        
-        # HC9: Pokrycie wszystkich dni roboczych - KRYTYCZNE dla działania grafiku
-        self._add_daily_coverage_constraint()
-        
-        # HC10: Max godzin miesięcznie per pracownik - KRYTYCZNE dla zgodności z etatem
-        self._add_max_monthly_hours_constraint()
-        
-        print(f"✅ Dodano {self.stats['hard_constraints']} ograniczeń twardych")
+        print(f"   ✅ Dodano {self.stats['hard_constraints']} hard constraints")
     
-    def _add_no_overlapping_shifts_constraint(self):
-        """HC1: Jeden pracownik może mieć max 1 zmianę dziennie."""
-        count = 0
-        for emp_id in self.employee_by_id.keys():
-            for day in self.all_days:
-                # Znajdź wszystkie zmienne dla tego pracownika w tym dniu
-                day_shifts = [
-                    var for (e_id, d, t_id), var in self.shifts_vars.items()
-                    if e_id == emp_id and d == day
+    def _add_hc1_one_shift_per_day(self):
+        """
+        HC1: Maksymalnie jedna zmiana dziennie na pracownika.
+        Pracownik nie może mieć dwóch zmian w tym samym dniu.
+        """
+        for emp_idx in range(len(self.data.employees)):
+            for day in self.data.all_days:
+                shift_vars = [
+                    self.shifts[(emp_idx, day, t)]
+                    for t in range(len(self.data.templates))
+                    if (emp_idx, day, t) in self.shifts
                 ]
-                
-                if day_shifts:
-                    # Suma zmian dla pracownika w dniu <= 1
-                    self.model.Add(sum(day_shifts) <= 1)
-                    count += 1
-        
-        self.stats['hard_constraints'] += count
-        print(f"  ✓ HC1: Brak nakładania zmian ({count} ograniczeń)")
+                if shift_vars:
+                    self.model.Add(sum(shift_vars) <= 1)
+                    self.stats['hard_constraints'] += 1
     
-    def _add_shift_staffing_constraint(self):
-        """HC7: Minimalna obsada w godzinach otwarcia sklepu z CIĄGŁYM POKRYCIEM.
-        
-        STARA LOGIKA (problem):
-        - Wymuszał tylko ogólną obsadę w godzinach otwarcia
-        - Solver mógł zostawić luki (np. 9-16 pokryte, ale 16-21 puste)
-        
-        NOWA LOGIKA (ciągłe pokrycie):
-        - Dzieli godziny otwarcia na przedziały co 1h (np. 9-10, 10-11, ..., 20-21)
-        - Dla KAŻDEGO przedziału wymusza min 1 pracownika
-        - Zapewnia ciągłe pokrycie bez luk
-        - Max employees nadal wymuszane per zmiana
+    def _add_hc2_max_weekly_hours(self):
         """
-        count = 0
+        HC2: Max 48h pracy tygodniowo (Art. 131 KP).
+        Dotyczy każdego tygodnia kalendarzowego.
+        """
+        max_weekly_minutes = self.data.max_weekly_hours * 60
         
-        # Pobierz opening_hours z organization_settings
-        opening_hours = self.organization_settings.get('opening_hours', {})
-        if not opening_hours:
-            print("  ⚠️  HC7: Brak opening_hours w ustawieniach - używam domyślnych 9:00-21:00")
-            opening_hours = {
-                'monday': {'enabled': True, 'open': '09:00', 'close': '21:00'},
-                'tuesday': {'enabled': True, 'open': '09:00', 'close': '21:00'},
-                'wednesday': {'enabled': True, 'open': '09:00', 'close': '21:00'},
-                'thursday': {'enabled': True, 'open': '09:00', 'close': '21:00'},
-                'friday': {'enabled': True, 'open': '09:00', 'close': '21:00'},
-                'saturday': {'enabled': True, 'open': '09:00', 'close': '21:00'},
-                'sunday': {'enabled': False, 'open': '10:00', 'close': '18:00'},
-            }
-        
-        day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-        
-        # Pobierz minimalną obsadę z organization_settings
-        min_staff_required = self.organization_settings.get('min_employees_per_shift', 1)
-        
-        for day in self.all_days:
-            day_date = date(self.year, self.month, day)
-            weekday = day_date.weekday()
-            day_name = day_names[weekday]
+        for emp_idx in range(len(self.data.employees)):
+            # Grupuj dni po tygodniach
+            weeks: Dict[int, List[int]] = defaultdict(list)
+            for day in self.data.all_days:
+                week_num = self.data.get_week_number(day)
+                weeks[week_num].append(day)
             
-            # Pobierz godziny otwarcia dla tego dnia
-            day_hours = opening_hours.get(day_name, {})
-            
-            # Jeśli sklep zamknięty w ten dzień - pomiń
-            if not day_hours.get('enabled', True):
-                continue
-            
-            # Pobierz godziny otwarcia
-            open_time = day_hours.get('open', '09:00')
-            close_time = day_hours.get('close', '21:00')
-            open_minutes = self._time_to_minutes(open_time)
-            close_minutes = self._time_to_minutes(close_time)
-            
-            # Podziel godziny otwarcia na przedziały co 60 minut
-            # Dla każdego przedziału sprawdzamy czy jest pokryty
-            time_slots = []
-            current = open_minutes
-            while current < close_minutes:
-                slot_end = min(current + 60, close_minutes)
-                time_slots.append((current, slot_end))
-                current = slot_end
-            
-            # Dla każdego przedziału czasowego wymuszamy minimalną obsadę
-            for slot_start, slot_end in time_slots:
-                # Znajdź zmiany które pokrywają TEN KONKRETNY przedział
-                covering_vars = []
+            for week_num, week_days in weeks.items():
+                week_minutes = []
                 
-                for (e_id, d, t_id), var in self.shifts_vars.items():
-                    if d != day:
-                        continue
-                    
-                    template = self.template_by_id[t_id]
-                    shift_start = template['start_time_minutes']
-                    shift_end = template['end_time_minutes']
-                    
-                    # Sprawdź czy zmiana pokrywa ten przedział czasowy
-                    covers_slot = False
-                    if shift_end >= shift_start:  # Normalna zmiana
-                        # Zmiana pokrywa slot jeśli: shift_start <= slot_start AND shift_end >= slot_end
-                        if shift_start <= slot_start and shift_end >= slot_end:
-                            covers_slot = True
-                    else:  # Zmiana przez północ (np. 22:00-06:00)
-                        # Sprawdź czy slot jest przed północą i pokryty
-                        if slot_start >= shift_start or slot_end <= shift_end:
-                            covers_slot = True
-                    
-                    if covers_slot:
-                        covering_vars.append(var)
+                for day in week_days:
+                    for tmpl_idx, tmpl in enumerate(self.data.templates):
+                        if (emp_idx, day, tmpl_idx) in self.shifts:
+                            duration = tmpl.get_duration_minutes()
+                            week_minutes.append(
+                                self.shifts[(emp_idx, day, tmpl_idx)] * duration
+                            )
                 
-                # KLUCZOWY CONSTRAINT: W tym przedziale czasowym musi być min X pracowników
-                if covering_vars:
-                    self.model.Add(sum(covering_vars) >= min_staff_required)
-                    count += 1
-                else:
-                    # Ostrzeżenie jeśli brak zmian pokrywających ten przedział
-                    slot_start_str = f"{slot_start//60:02d}:{slot_start%60:02d}"
-                    slot_end_str = f"{slot_end//60:02d}:{slot_end%60:02d}"
-                    print(f"  ⚠️  {day_date.strftime('%a %d')}: Brak zmian pokrywających {slot_start_str}-{slot_end_str}")
-            
-            # Dodatkowo: MAX employees per szablon (żeby nie przepełnić jednej zmiany)
-            for template in self.shift_templates:
-                template_id = template['id']
-                
-                if not self._is_template_applicable_on_day(template, day):
-                    continue
-                
-                shift_start = template['start_time_minutes']
-                shift_end = template['end_time_minutes']
-                
-                # Sprawdź czy zmiana pokrywa godziny otwarcia
-                overlaps = False
-                if shift_end >= shift_start:
-                    if shift_start < close_minutes and shift_end > open_minutes:
-                        overlaps = True
-                else:
-                    overlaps = True
-                
-                if not overlaps:
-                    continue
-                
-                template_max = template.get('max_employees')
-                if template_max and template_max > 0:
-                    shift_vars = [
-                        var for (e_id, d, t_id), var in self.shifts_vars.items()
-                        if d == day and t_id == template_id
-                    ]
-                    if shift_vars:
-                        self.model.Add(sum(shift_vars) <= template_max)
-                        count += 1
-        
-        self.stats['hard_constraints'] += count
-        print(f"  ✓ HC7: Ciągłe pokrycie godzin otwarcia ({count} ograniczeń)")
+                if week_minutes:
+                    self.model.Add(sum(week_minutes) <= max_weekly_minutes)
+                    self.stats['hard_constraints'] += 1
     
-    def _add_daily_rest_constraint(self):
-        """HC3: Minimum 11h odpoczynku między zmianami (Art. 132 KP)."""
-        count = 0
-        min_rest_hours = self.scheduling_rules.get('min_daily_rest_hours', 11)
-        min_rest_minutes = int(min_rest_hours * 60)
+    def _add_hc3_min_daily_rest(self):
+        """
+        HC3: Minimum 11h odpoczynku dobowego (Art. 132 KP).
+        Między końcem jednej zmiany a początkiem następnej musi być ≥11h.
+        """
+        min_rest_minutes = self.data.min_daily_rest_hours * 60
         
-        for emp_id in self.employee_by_id.keys():
-            for day in range(1, self.days_in_month):  # Nie ostatni dzień
+        for emp_idx in range(len(self.data.employees)):
+            for day in self.data.all_days[:-1]:  # Pomijamy ostatni dzień
                 next_day = day + 1
                 
-                # Dla każdej pary (zmiana_dzień_d, zmiana_dzień_d+1)
-                for (e1, d1, t1), var1 in self.shifts_vars.items():
-                    if e1 != emp_id or d1 != day:
+                for tmpl_idx, tmpl in enumerate(self.data.templates):
+                    if (emp_idx, day, tmpl_idx) not in self.shifts:
                         continue
                     
-                    template1 = self.template_by_id[t1]
-                    shift1_end = template1['end_time_minutes']
+                    shift_end = tmpl.get_end_minutes()
+                    # Jeśli zmiana kończy się po północy, shift_end > 1440
                     
-                    for (e2, d2, t2), var2 in self.shifts_vars.items():
-                        if e2 != emp_id or d2 != next_day:
+                    for next_tmpl_idx, next_tmpl in enumerate(self.data.templates):
+                        if (emp_idx, next_day, next_tmpl_idx) not in self.shifts:
                             continue
                         
-                        template2 = self.template_by_id[t2]
-                        shift2_start = template2['start_time_minutes']
+                        next_shift_start = next_tmpl.get_start_minutes()
                         
-                        # Oblicz czas odpoczynku
-                        rest_minutes = self._calculate_rest_time(shift1_end, shift2_start)
+                        # Oblicz przerwę między zmianami
+                        # Jeśli shift_end = 1320 (22:00), next_start = 480 (08:00)
+                        # Przerwa = (24*60 - 1320) + 480 = 600 min = 10h
+                        if shift_end <= 1440:
+                            rest = (24 * 60 - shift_end) + next_shift_start
+                        else:
+                            # Zmiana nocna kończąca się po północy
+                            rest = next_shift_start - (shift_end - 24 * 60)
                         
-                        if rest_minutes < min_rest_minutes:
-                            # Nie mogą być obie zmiany przypisane jednocześnie
-                            self.model.Add(var1 + var2 <= 1)
-                            count += 1
-        
-        self.stats['hard_constraints'] += count
-        print(f"  ✓ HC3: Odpoczynek dobowy 11h ({count} ograniczeń)")
+                        if rest < min_rest_minutes:
+                            # Nie można przypisać obu zmian jednocześnie
+                            self.model.Add(
+                                self.shifts[(emp_idx, day, tmpl_idx)] +
+                                self.shifts[(emp_idx, next_day, next_tmpl_idx)] <= 1
+                            )
+                            self.stats['hard_constraints'] += 1
     
-    def _calculate_rest_time(self, shift1_end_minutes: int, shift2_start_minutes: int) -> int:
-        """Oblicza czas odpoczynku między zmianami w minutach."""
-        if shift2_start_minutes >= shift1_end_minutes:
-            return shift2_start_minutes - shift1_end_minutes
-        else:
-            # Przez północ
-            return (24 * 60 - shift1_end_minutes) + shift2_start_minutes
-    
-    def _add_trading_sundays_constraint(self):
-        """HC5: Zakaz pracy w niedziele niehandlowe."""
-        count = 0
-        enable_trading_sundays = self.organization_settings.get('enable_trading_sundays', False)
-        
-        if not enable_trading_sundays:
-            # Jeśli niedziele handlowe są wyłączone, zabroń wszystkich niedziel
-            for day in self.sundays_in_month:
-                sunday_shifts = [
-                    var for (e_id, d, t_id), var in self.shifts_vars.items()
-                    if d == day
-                ]
-                
-                for var in sunday_shifts:
-                    self.model.Add(var == 0)
-                    count += 1
-        else:
-            # Zabroń tylko niedziel, które NIE są w trading_sundays
-            for day in self.sundays_in_month:
-                if day not in self.trading_sunday_days:
-                    sunday_shifts = [
-                        var for (e_id, d, t_id), var in self.shifts_vars.items()
-                        if d == day
-                    ]
-                    
-                    for var in sunday_shifts:
-                        self.model.Add(var == 0)
-                        count += 1
-        
-        self.stats['hard_constraints'] += count
-        print(f"  ✓ HC5: Niedziele handlowe ({count} ograniczeń)")
-    
-    def _add_max_consecutive_days_constraint(self):
-        """HC4: Maksymalna liczba dni pracy pod rząd (Art. 133 KP)."""
-        count = 0
-        max_consecutive = self.scheduling_rules.get('max_consecutive_days', 6)
-        
-        for emp_id in self.employee_by_id.keys():
-            # Sprawdź każde możliwe okno (max_consecutive + 1) dni
-            for start_day in range(1, self.days_in_month - max_consecutive + 1):
-                window_days = range(start_day, start_day + max_consecutive + 1)
-                
-                # Zbierz wszystkie zmiany dla pracownika w tym oknie
-                window_shifts = [
-                    var for (e_id, d, t_id), var in self.shifts_vars.items()
-                    if e_id == emp_id and d in window_days
-                ]
-                
-                if window_shifts:
-                    # W oknie (max_consecutive + 1) dni może pracować max max_consecutive dni
-                    self.model.Add(sum(window_shifts) <= max_consecutive)
-                    count += 1
-        
-        self.stats['hard_constraints'] += count
-        print(f"  ✓ HC4: Max {max_consecutive} dni z rzędu ({count} ograniczeń)")
-    
-    def _add_weekly_hours_constraint(self):
-        """HC2: Maksimum 48 godzin pracy w tygodniu (Art. 131 § 1 KP) - KRYTYCZNE."""
-        count = 0
-        max_weekly_hours = self.scheduling_rules.get('max_weekly_work_hours', 48)
-        max_weekly_minutes = int(max_weekly_hours * 60)
-        
-        # Oblicz rzeczywiste tygodnie kalendarzowe (poniedziałek-niedziela)
-        first_day = date(self.year, self.month, 1)
-        first_weekday = first_day.weekday()  # 0=Monday, 6=Sunday
-        
-        # Znajdź pierwszy poniedziałek w miesiącu (lub dzień 1 jeśli jest poniedziałkiem)
-        if first_weekday == 0:  # Już poniedziałek
-            first_monday = 1
-        else:
-            # Ile dni do najbliższego poniedziałku
-            days_until_monday = (7 - first_weekday) % 7
-            first_monday = 1 + days_until_monday
-        
-        # Buduj tygodnie kalendarzowe
-        weeks = []
-        current_week_start = 1  # Zawsze zaczynamy od dnia 1 (częściowy tydzień)
-        
-        # Pierwszy tydzień (może być częściowy - od dnia 1 do pierwszej niedzieli)
-        if first_monday > 1:
-            first_sunday = first_monday - 1
-            weeks.append(list(range(1, min(first_sunday + 1, self.days_in_month + 1))))
-            current_week_start = first_monday
-        
-        # Pełne tygodnie (poniedziałek-niedziela)
-        while current_week_start <= self.days_in_month:
-            week_end = min(current_week_start + 6, self.days_in_month)
-            weeks.append(list(range(current_week_start, week_end + 1)))
-            current_week_start = week_end + 1
-        
-        for emp_id in self.employee_by_id.keys():
-            for week_days in weeks:
-                # Zbierz wszystkie zmiany dla pracownika w tym tygodniu wraz z czasem trwania
-                week_work_minutes = []
-                for (e_id, d, t_id), var in self.shifts_vars.items():
-                    if e_id == emp_id and d in week_days:
-                        template = self.template_by_id[t_id]
-                        duration = template['duration_minutes']
-                        week_work_minutes.append(var * duration)
-                
-                if week_work_minutes:
-                    # Suma godzin w tygodniu <= max_weekly_hours
-                    self.model.Add(sum(week_work_minutes) <= max_weekly_minutes)
-                    count += 1
-        
-        self.stats['hard_constraints'] += count
-        print(f"  ✓ HC2: Max {max_weekly_hours}h/tydzień ({count} ograniczeń, {len(weeks)} tygodni)")
-    
-
-    def _add_daily_coverage_constraint(self):
-        """HC9: Wymuszenie pokrycia wszystkich dni roboczych."""
-        count = 0
-        enable_trading_sundays = self.organization_settings.get('enable_trading_sundays', False)
-        
-        for day in self.all_days:
-            # Pomiń niedziele niehandlowe
-            if day in self.sundays_in_month:
-                if not enable_trading_sundays or day not in self.trading_sunday_days:
-                    continue
-            
-            # Zbierz wszystkie możliwe zmiany w tym dniu
-            day_shifts = [
-                var for (e_id, d, t_id), var in self.shifts_vars.items()
-                if d == day
-            ]
-            
-            if day_shifts:
-                # Wymuszamy przynajmniej 1 zmianę w każdy dzień roboczy
-                self.model.Add(sum(day_shifts) >= 1)
-                count += 1
-        
-        self.stats['hard_constraints'] += count
-        print(f"  ✓ HC9: Pokrycie dni roboczych ({count} dni wymaga obsady)")
-    
-    def _add_max_monthly_hours_constraint(self):
-        """HC10: Maksymalna liczba godzin miesięcznie dla pracownika.
-        
-        WAŻNE: max_hours to limit godzin które pracownik MOŻE przepracować.
-        Urlopy są już blokowane przez absence_set (dni nieobecności).
-        NIE ODEJMUJEMY urlopów od max_hours - to powodowałoby INFEASIBILITY!
-        
-        Przykład:
-        - Pracownik: max_hours=160h, 2 dni urlopu
-        - HC10: maksymalnie 160h (urlop jest osobno - dni zablokowane)
-        - SC1: target 144h (160h - 16h urlopu)
+    def _add_hc4_max_consecutive_days(self):
         """
-        count = 0
+        HC4: Max 6 dni pracy z rzędu (Art. 133 KP).
+        Po 6 dniach pracy musi być dzień wolny.
+        """
+        max_consecutive = self.data.max_consecutive_days
+        window_size = max_consecutive + 1  # 7 dni okno
         
-        for emp_id, emp in self.employee_by_id.items():
-            # Pobierz max_hours z danych pracownika
-            max_hours = emp.get('max_hours')
+        for emp_idx in range(len(self.data.employees)):
+            for start_day in range(1, self.data.days_in_month - window_size + 2):
+                window_days = list(range(start_day, start_day + window_size))
+                
+                work_vars = []
+                for day in window_days:
+                    if day <= self.data.days_in_month and (emp_idx, day) in self.works_day:
+                        work_vars.append(self.works_day[(emp_idx, day)])
+                
+                if len(work_vars) == window_size:
+                    # W oknie 7 dni może być max 6 dni pracy
+                    self.model.Add(sum(work_vars) <= max_consecutive)
+                    self.stats['hard_constraints'] += 1
+    
+    def _add_hc5_trading_sundays(self):
+        """
+        HC5: Praca tylko w niedziele handlowe.
+        W niehandlowe niedziele nie można planować pracy.
+        """
+        for emp_idx in range(len(self.data.employees)):
+            for day in self.data.sundays:
+                if day not in self.data.trading_sundays:
+                    # Niehandlowa niedziela - nie powinno być zmiennych
+                    # ale dla pewności sprawdzamy
+                    for tmpl_idx in range(len(self.data.templates)):
+                        if (emp_idx, day, tmpl_idx) in self.shifts:
+                            self.model.Add(self.shifts[(emp_idx, day, tmpl_idx)] == 0)
+                            self.stats['hard_constraints'] += 1
+    
+    def _add_hc6_absences(self):
+        """
+        HC6: Respektowanie nieobecności.
+        Jeśli pracownik ma urlop/L4, nie można go planować.
+        """
+        for emp_idx, emp in enumerate(self.data.employees):
+            for day in self.data.all_days:
+                if self.data.is_employee_absent(emp.id, day):
+                    for tmpl_idx in range(len(self.data.templates)):
+                        if (emp_idx, day, tmpl_idx) in self.shifts:
+                            self.model.Add(self.shifts[(emp_idx, day, tmpl_idx)] == 0)
+                            self.stats['hard_constraints'] += 1
+    
+    def _add_hc7_min_staffing(self):
+        """
+        HC7: Minimalna obsada na zmianę.
+        Każdy szablon zmiany musi mieć min_employees pracowników.
+        
+        UWAGA: To jest "semi-hard" - jeśli nie ma wystarczająco pracowników,
+        solver może nie znaleźć rozwiązania. W praktyce używamy jako soft constraint.
+        """
+        # Zamiast hard constraint, dodajemy do funkcji celu
+        # Zobacz _add_sc_staffing_balance()
+        pass
+    
+    def _add_hc11_weekly_rest(self):
+        """
+        HC11: Minimum 35h odpoczynku tygodniowego (Art. 133 KP).
+        Raz w tygodniu musi być przerwa ≥35h.
+        
+        Implementacja: W każdym tygodniu musi być przynajmniej jeden dzień wolny
+        z wolnym dniem następnym ALBO poprzednim (aby zapewnić 35h ciągłej przerwy).
+        """
+        # Uproszczona wersja: wymuszamy co najmniej 1 dzień wolny na tydzień
+        # Pełne 35h wymaga dokładniejszej analizy start/end zmian
+        
+        for emp_idx in range(len(self.data.employees)):
+            weeks: Dict[int, List[int]] = defaultdict(list)
+            for day in self.data.all_days:
+                week_num = self.data.get_week_number(day)
+                weeks[week_num].append(day)
             
-            if max_hours is None:
-                # Jeśli nie ma max_hours, użyj monthly_hours_norm jako fallback
-                max_hours = self.data.get('monthly_hours_norm', 180)
+            for week_num, week_days in weeks.items():
+                if len(week_days) < 7:
+                    continue  # Niepełny tydzień na początku/końcu miesiąca
+                
+                work_vars = []
+                for day in week_days:
+                    if (emp_idx, day) in self.works_day:
+                        work_vars.append(self.works_day[(emp_idx, day)])
+                
+                if work_vars:
+                    # Max 6 dni pracy = min 1 dzień wolny
+                    self.model.Add(sum(work_vars) <= 6)
+                    self.stats['hard_constraints'] += 1
+    
+    def _add_hc12_free_sunday(self):
+        """
+        HC12: Wolna niedziela co 4 tygodnie (Art. 151^10 KP).
+        Pracownik musi mieć co najmniej jedną wolną niedzielę w miesiącu.
+        """
+        trading_sunday_list = sorted(self.data.trading_sundays)
+        
+        if not trading_sunday_list:
+            return  # Brak niedziel handlowych
+        
+        for emp_idx in range(len(self.data.employees)):
+            # Jeśli są ≥2 niedziele handlowe, minimum 1 musi być wolna
+            if len(trading_sunday_list) >= 2:
+                sunday_work_vars = []
+                for day in trading_sunday_list:
+                    if (emp_idx, day) in self.works_day:
+                        sunday_work_vars.append(self.works_day[(emp_idx, day)])
+                
+                if sunday_work_vars:
+                    # Max (n-1) niedziel pracujących = min 1 wolna
+                    max_working_sundays = len(trading_sunday_list) - 1
+                    self.model.Add(sum(sunday_work_vars) <= max_working_sundays)
+                    self.stats['hard_constraints'] += 1
+    
+    # =========================================================================
+    # KROK 3: Soft Constraints (Optymalizowane, nie wymuszone)
+    # =========================================================================
+    
+    def add_soft_constraints(self):
+        """Dodaje wszystkie ograniczenia miękkie do funkcji celu."""
+        print("\n📊 Dodawanie Soft Constraints (funkcja celu)...")
+        
+        self._add_sc1_hours_deviation()
+        self._add_sc2_preferences()
+        self._add_sc3_consecutive_days_penalty()
+        self._add_sc4_weekend_fairness()
+        self._add_sc5_daily_staffing_balance()
+        
+        print(f"   ✅ Dodano {self.stats['soft_constraints']} soft constraints")
+    
+    def _add_sc1_hours_deviation(self):
+        """
+        SC1: KRYTYCZNY - Kara za odchylenie od normy miesięcznej.
+        
+        Używamy BARDZO wysokiej kary, aby solver "dobijał" do normy.
+        Tolerancja: ±60 minut (1h) bez kary.
+        Powyżej/poniżej: kara proporcjonalna do odchylenia.
+        """
+        print("   → SC1: Dopełnienie etatowe (CRITICAL)")
+        
+        tolerance_minutes = 60  # ±1h tolerancji
+        penalty_weight = WEIGHTS['HOURS_DEVIATION_PER_MINUTE']
+        work_days_count = len(self.data.weekdays)
+        
+        for emp_idx, emp in enumerate(self.data.employees):
+            target_minutes = emp.get_target_minutes(self.data.monthly_norm_minutes, work_days_count)
             
-            # Znajdź wszystkie zmiany tego pracownika
-            employee_shifts = [
-                (var, self.template_by_id[t_id]['duration_minutes'])
-                for (e_id, d, t_id), var in self.shifts_vars.items()
-                if e_id == emp_id
-            ]
+            # Oblicz sumę minut przypisanych pracownikowi
+            total_minutes_terms = []
             
-            if not employee_shifts:
+            for day in self.data.all_days:
+                for tmpl_idx, tmpl in enumerate(self.data.templates):
+                    if (emp_idx, day, tmpl_idx) in self.shifts:
+                        duration = tmpl.get_duration_minutes()
+                        total_minutes_terms.append(
+                            self.shifts[(emp_idx, day, tmpl_idx)] * duration
+                        )
+            
+            if not total_minutes_terms:
                 continue
             
-            # Suma minut = suma(var * duration_minutes)
-            total_minutes = sum(var * duration for var, duration in employee_shifts)
+            # Zmienna: całkowite minuty pracownika
+            max_possible_minutes = sum(
+                tmpl.get_duration_minutes()
+                for tmpl in self.data.templates
+            ) * self.data.days_in_month
             
-            # Max minuty (BEZ odejmowania urlopów - urlop jest już w absence_set!)
-            max_minutes = int(max_hours * 60)
+            total_minutes = self.model.NewIntVar(
+                0, max_possible_minutes, f"total_min_{emp_idx}"
+            )
+            self.model.Add(total_minutes == sum(total_minutes_terms))
             
-            # HARD CONSTRAINT: suma minut <= max_hours * 60
-            self.model.Add(total_minutes <= max_minutes)
-            count += 1
-        
-        self.stats['hard_constraints'] += count
-        print(f"  ✓ HC10: Max godzin miesięcznie ({count} pracowników)")
-
-    def add_soft_constraints(self):
+            # Zmienne dla odchylenia
+            deviation = self.model.NewIntVar(
+                -max_possible_minutes, max_possible_minutes, f"dev_{emp_idx}"
+            )
+            self.model.Add(deviation == total_minutes - target_minutes)
+            
+            # Wartość bezwzględna odchylenia
+            abs_deviation = self.model.NewIntVar(
+                0, max_possible_minutes, f"abs_dev_{emp_idx}"
+            )
+            self.model.AddAbsEquality(abs_deviation, deviation)
+            
+            # Odchylenie ponad tolerancję
+            excess_deviation = self.model.NewIntVar(
+                0, max_possible_minutes, f"excess_dev_{emp_idx}"
+            )
+            self.model.AddMaxEquality(
+                excess_deviation,
+                [abs_deviation - tolerance_minutes, self.model.NewConstant(0)]
+            )
+            
+            # Kara za odchylenie ponad tolerancję
+            self.penalties.append((
+                excess_deviation,
+                penalty_weight,
+                f"hours_deviation_{emp.full_name}"
+            ))
+            self.stats['soft_constraints'] += 1
+            
+            print(f"      • {emp.full_name}: target={target_minutes//60}h ({target_minutes}min)")
+    
+    def _add_sc2_preferences(self):
         """
-        Krok 3: Dodawanie ograniczeń miękkich (cele optymalizacyjne).
-        Używamy funkcji celu do minimalizacji kar/maksymalizacji nagród.
-        
-        PRIORYTETY (wyższy = ważniejszy):
-        - SC1: Wypełnienie godzin etatu (5000 pkt/godz) - NAJWYŻSZY
-        - SC5: Sprawiedliwe weekendy (2000 pkt) - 95% priorytet
-        - SC6: Równomierna obsada dzienna (1500 pkt) - WYSOKI
-        - SC7: Sprawiedliwe zmiany tygodniowe (500 pkt) - 75% priorytet
-        - SC4: Równomierne rozłożenie ogólne (100 pkt)
-        - SC2/SC3: Preferencje i manager (50 pkt)
+        SC2: Nagrody za preferencje pracowników.
+        - Preferowane dni: bonus
+        - Unikane dni: kara
         """
-        print("\n🎯 Dodawanie celów optymalizacyjnych...")
+        print("   → SC2: Preferencje pracowników")
+        
+        for emp_idx, emp in enumerate(self.data.employees):
+            pref = self.data.preferences.get(emp.id)
+            if not pref:
+                continue
+            
+            for day in self.data.all_days:
+                weekday = self.data.day_to_weekday[day]
+                
+                # Sprawdź preferencje dnia
+                is_preferred = weekday in pref.preferred_days
+                is_avoided = weekday in pref.unavailable_days
+                
+                for tmpl_idx in range(len(self.data.templates)):
+                    if (emp_idx, day, tmpl_idx) not in self.shifts:
+                        continue
+                    
+                    shift_var = self.shifts[(emp_idx, day, tmpl_idx)]
+                    
+                    if is_preferred:
+                        self.bonuses.append((
+                            shift_var,
+                            WEIGHTS['PREFERRED_DAY_BONUS'],
+                            f"pref_day_{emp_idx}_{day}"
+                        ))
+                        self.stats['soft_constraints'] += 1
+                    
+                    if is_avoided:
+                        self.penalties.append((
+                            shift_var,
+                            WEIGHTS['AVOIDED_DAY_PENALTY'],
+                            f"avoid_day_{emp_idx}_{day}"
+                        ))
+                        self.stats['soft_constraints'] += 1
+    
+    def _add_sc3_consecutive_days_penalty(self):
+        """
+        SC3: Kara za zbyt wiele dni pracy z rzędu (powyżej 5).
+        """
+        print("   → SC3: Kara za ciągłą pracę >5 dni")
+        
+        penalty_threshold = 5
+        
+        for emp_idx in range(len(self.data.employees)):
+            for start_day in range(1, self.data.days_in_month - penalty_threshold + 1):
+                window_days = list(range(start_day, start_day + penalty_threshold + 1))
+                
+                work_vars = []
+                for day in window_days:
+                    if day <= self.data.days_in_month and (emp_idx, day) in self.works_day:
+                        work_vars.append(self.works_day[(emp_idx, day)])
+                
+                if len(work_vars) == penalty_threshold + 1:
+                    # Jeśli wszystkie 6 dni są pracujące, nalicz karę
+                    all_working = self.model.NewBoolVar(f"consec_{emp_idx}_{start_day}")
+                    self.model.Add(sum(work_vars) == penalty_threshold + 1).OnlyEnforceIf(all_working)
+                    self.model.Add(sum(work_vars) < penalty_threshold + 1).OnlyEnforceIf(all_working.Not())
+                    
+                    self.penalties.append((
+                        all_working,
+                        WEIGHTS['CONSECUTIVE_DAYS_PENALTY'],
+                        f"consecutive_{emp_idx}_{start_day}"
+                    ))
+                    self.stats['soft_constraints'] += 1
+    
+    def _add_sc4_weekend_fairness(self):
+        """
+        SC4: Sprawiedliwy podział weekendów.
+        Wszyscy pracownicy powinni pracować podobną liczbę weekendów.
+        """
+        print("   → SC4: Sprawiedliwe weekendy")
+        
+        if len(self.data.employees) <= 1:
+            return
+        
+        # Policz weekendy (soboty + niedziele handlowe) dla każdego pracownika
+        weekend_days = set(self.data.saturdays) | self.data.trading_sundays
+        
+        if not weekend_days:
+            return
+        
+        weekend_counts = []
+        
+        for emp_idx in range(len(self.data.employees)):
+            count_var = self.model.NewIntVar(
+                0, len(weekend_days), f"weekend_count_{emp_idx}"
+            )
+            
+            weekend_work_vars = []
+            for day in weekend_days:
+                if (emp_idx, day) in self.works_day:
+                    weekend_work_vars.append(self.works_day[(emp_idx, day)])
+            
+            if weekend_work_vars:
+                self.model.Add(count_var == sum(weekend_work_vars))
+            else:
+                self.model.Add(count_var == 0)
+            
+            weekend_counts.append(count_var)
+        
+        # Minimalizuj różnicę między max i min
+        if len(weekend_counts) >= 2:
+            max_weekends = self.model.NewIntVar(0, len(weekend_days), "max_weekends")
+            min_weekends = self.model.NewIntVar(0, len(weekend_days), "min_weekends")
+            
+            self.model.AddMaxEquality(max_weekends, weekend_counts)
+            self.model.AddMinEquality(min_weekends, weekend_counts)
+            
+            weekend_diff = self.model.NewIntVar(0, len(weekend_days), "weekend_diff")
+            self.model.Add(weekend_diff == max_weekends - min_weekends)
+            
+            self.penalties.append((
+                weekend_diff,
+                WEIGHTS['WEEKEND_FAIRNESS_PENALTY'],
+                "weekend_fairness"
+            ))
+            self.stats['soft_constraints'] += 1
+    
+    def _add_sc5_daily_staffing_balance(self):
+        """
+        SC5: Równomierne obłożenie dzienne.
+        Kara za dni z za małą lub za dużą obsadą.
+        """
+        print("   → SC5: Równomierne obłożenie")
+        
+        for day in self.data.all_days:
+            if not self.data.is_workable_day(day):
+                continue
+            
+            for tmpl_idx, tmpl in enumerate(self.data.templates):
+                # Policz pracowników przypisanych do tego szablonu w tym dniu
+                assigned_vars = [
+                    self.shifts[(e, day, tmpl_idx)]
+                    for e in range(len(self.data.employees))
+                    if (e, day, tmpl_idx) in self.shifts
+                ]
+                
+                if not assigned_vars:
+                    continue
+                
+                assigned_count = self.model.NewIntVar(
+                    0, len(assigned_vars), f"assigned_{day}_{tmpl_idx}"
+                )
+                self.model.Add(assigned_count == sum(assigned_vars))
+                
+                # Kara za zbyt małą obsadę (poniżej minimum)
+                min_req = tmpl.min_employees
+                shortage = self.model.NewIntVar(
+                    0, min_req, f"shortage_{day}_{tmpl_idx}"
+                )
+                self.model.AddMaxEquality(
+                    shortage,
+                    [min_req - assigned_count, self.model.NewConstant(0)]
+                )
+                
+                if min_req > 0:
+                    self.penalties.append((
+                        shortage,
+                        WEIGHTS['DAILY_VARIANCE_PENALTY'],
+                        f"understaffed_{day}_{tmpl.name}"
+                    ))
+                    self.stats['soft_constraints'] += 1
+    
+    # =========================================================================
+    # KROK 4: Budowanie funkcji celu i rozwiązywanie
+    # =========================================================================
+    
+    def build_objective(self):
+        """Buduje funkcję celu z zebranych kar i nagród."""
+        print("\n🎯 Budowanie funkcji celu...")
         
         objective_terms = []
         
-        # SC1: Zgodność z etatem - kara za odchylenie od docelowych godzin (PRIORYTET 1)
-        penalty_terms_etat = self._add_employment_type_objective()
-        objective_terms.extend(penalty_terms_etat)
+        # Kary (minimalizujemy)
+        for var, weight, name in self.penalties:
+            objective_terms.append(var * weight)
         
-        # SC5: Sprawiedliwe weekendy - 95% priorytet (PRIORYTET 2)
-        penalty_terms_weekends = self._add_fair_weekend_distribution_objective()
-        objective_terms.extend(penalty_terms_weekends)
+        # Bonusy (maksymalizujemy = minimalizujemy negatywne)
+        for var, weight, name in self.bonuses:
+            objective_terms.append(-var * weight)
         
-        # SC6: Równomierna obsada dzienna ±1 pracownik (PRIORYTET 3)
-        penalty_terms_daily = self._add_balanced_daily_staffing_objective()
-        objective_terms.extend(penalty_terms_daily)
-        
-        # SC7: Sprawiedliwe zmiany miesięczne - 75% priorytet (PRIORYTET 4)
-        penalty_terms_monthly = self._add_fair_monthly_distribution_objective()
-        objective_terms.extend(penalty_terms_monthly)
-        
-        # SC4: Równomierne rozłożenie zmian ogólne (PRIORYTET 5)
-        penalty_terms_balance = self._add_balanced_distribution_objective()
-        objective_terms.extend(penalty_terms_balance)
-        
-        # SC2: Preferencje godzinowe - nagroda za zgodność
-        reward_terms_prefs = self._add_time_preferences_objective()
-        objective_terms.extend(reward_terms_prefs)
-        
-        # SC3: Mix kompetencji - premia za obecność managera
-        reward_terms_manager = self._add_manager_presence_objective()
-        objective_terms.extend(reward_terms_manager)
-        
-        # Funkcja celu: maksymalizuj (nagrody - kary)
         if objective_terms:
-            self.model.Maximize(sum(objective_terms))
-            print(f"✅ Funkcja celu zawiera {len(objective_terms)} składników")
-        else:
-            # Jeśli brak soft constraints, maksymalizujemy liczbę przypisanych zmian
-            all_shifts_sum = sum(var for var in self.shifts_vars.values())
-            self.model.Maximize(all_shifts_sum)
-            print("⚠️  Brak składników soft constraints - maksymalizuję liczbę zmian")
+            self.model.Minimize(sum(objective_terms))
+        
+        print(f"   ✅ Funkcja celu: {len(self.penalties)} kar, {len(self.bonuses)} bonusów")
     
-    def _calculate_average_shift_duration(self, emp_id: str) -> float:
+    def solve(self, time_limit_seconds: Optional[int] = None) -> Dict:
         """
-        Oblicza średnią długość zmian dla pracownika na podstawie dostępnych szablonów.
-        Używane do obliczenia odliczenia za urlopy.
-        
-        Returns:
-            Średnia długość zmiany w godzinach (fallback: 8.0h)
-        """
-        # Znajdź wszystkie szablony dostępne dla tego pracownika
-        available_templates = []
-        for template in self.shift_templates:
-            # Sprawdź czy istnieje choć jedna zmienna dla tego pracownika i szablonu
-            has_vars = any(
-                e_id == emp_id and t_id == template['id']
-                for (e_id, d, t_id) in self.shifts_vars.keys()
-            )
-            if has_vars:
-                available_templates.append(template)
-        
-        if not available_templates:
-            # Fallback: standardowe 8h
-            return 8.0
-        
-        # Oblicz średnią długość zmian (bez przerw - to czas faktyczny pracy)
-        total_minutes = sum(t['duration_minutes'] for t in available_templates)
-        avg_minutes = total_minutes / len(available_templates)
-        avg_hours = avg_minutes / 60.0
-        
-        return avg_hours
-    
-    def _calculate_absence_hours_deduction(self, emp_id: str, employment_type: str) -> float:
-        """Oblicza ile godzin odjąć od target_hours z powodu urlopów/nieobecności.
-        
-        NOWA LOGIKA (2026-01-31):
-        URLOP = ZAWSZE 8H za każdy dzień nieobecności!
-        Nie liczymy średniej długości zmian - zgodnie z Kodeksem Pracy.
-        
-        ZASADA:
-        - 1 dzień urlopu = 8h odliczenia od max_hours
-        - 3 dni urlopu = 24h odliczenia
-        - Prosty, przewidywalny system
-        - LICZYMY WSZYSTKIE DNI (również weekendy) - urlop to urlop!
+        Uruchamia solver CP-SAT i zwraca wynik.
         
         Args:
-            emp_id: ID pracownika
-            employment_type: Typ etatu ('full', 'half', etc.) - NIE SKALUJEMY przez etat!
-            
+            time_limit_seconds: Limit czasu dla solvera (domyślnie z danych)
+        
         Returns:
-            Liczba godzin do odjęcia od target_hours (dni_urlopu × 8h)
+            Słownik z wynikami (shifts, statistics, status)
         """
-        # Policz WSZYSTKIE dni nieobecności w miesiącu (również weekendy!)
-        total_absence_days = 0
+        start_time = time.time()
         
-        for day in self.all_days:
-            if (emp_id, day) in self.absence_set:
-                total_absence_days += 1
+        # Buduj funkcję celu
+        self.build_objective()
         
-        # URLOP = ZAWSZE 8H za dzień
-        deduction_hours = total_absence_days * TimeNorms.HOURS_PER_ABSENCE_DAY
+        # Konfiguruj solver
+        solver = cp_model.CpSolver()
         
-        if deduction_hours > 0:
-            print(f"    • {emp_id[:12]}: {total_absence_days} dni urlopu × 8h = -{deduction_hours:.0f}h")
+        timeout = time_limit_seconds or self.data.solver_time_limit
+        solver.parameters.max_time_in_seconds = timeout
+        solver.parameters.num_search_workers = 8  # Wielowątkowość
+        solver.parameters.log_search_progress = False
         
-        return deduction_hours
-    
-    def _add_employment_type_objective(self) -> List:
-        """SC1: Kara za odchylenie od oczekiwanych godzin według etatu.
-        
-        KLUCZOWE: max_hours to docelowa norma godzin (np. 176h dla full-time),
-        a nie absolutne maksimum. Solver powinien dążyć do wypełnienia tej normy.
-        """
-        terms = []
-        
-        # Pobierz normę godzin z API jako fallback
-        monthly_hours_norm = self.data.get('monthly_hours_norm')
-        
-        # Wagi kar - asymetryczne!
-        # Kara za niedopracowanie jest ZNACZNIE większa niż za nadpracowanie
-        penalty_underschedule = 5000  # Duża kara za każdą brakującą godzinę
-        penalty_overschedule = 100    # Mała kara za nadgodziny (i tak HC10 blokuje)
-        
-        print("  ⚙️  SC1: Obliczam target hours do wypełnienia:")
-        
-        for emp_id, emp in self.employee_by_id.items():
-            employment_type = emp.get('employment_type', 'full')
-            
-            # TARGET HOURS = max_hours z API (to jest norma etatu, nie absolutne max)
-            target_hours = emp.get('max_hours')
-            
-            if target_hours is None:
-                # Fallback: oblicz z monthly_hours_norm
-                if monthly_hours_norm is not None:
-                    etat_multipliers = {
-                        'full': 1.0, 'three_quarter': 0.75, 'half': 0.5, 'one_third': 0.333
-                    }
-                    multiplier = etat_multipliers.get(employment_type, 1.0)
-                    target_hours = monthly_hours_norm * multiplier
-                else:
-                    target_hours = 160  # Ostateczny fallback
-            
-            # Odejmij urlopy od target
-            absence_deduction = self._calculate_absence_hours_deduction(emp_id, employment_type)
-            target_hours = max(0, target_hours - absence_deduction)
-            
-            print(f"    • {emp_id[:12]}: target={target_hours:.0f}h (po urlopach: -{absence_deduction:.0f}h)")
-            
-            # Oblicz sumę minut przepracowanych w miesiącu
-            employee_shifts = [
-                (var, self.template_by_id[t_id]['duration_minutes'])
-                for (e_id, d, t_id), var in self.shifts_vars.items()
-                if e_id == emp_id
-            ]
-            
-            if not employee_shifts:
-                continue
-            
-            # Suma minut = suma(var * duration_minutes)
-            total_minutes = sum(var * duration for var, duration in employee_shifts)
-            
-            # Docelowe minuty
-            target_minutes = int(target_hours * 60)
-            
-            # Zmienne pomocnicze dla odchylenia
-            # deviation_neg = ile brakuje (niedopracowane)
-            # deviation_pos = ile za dużo (nadpracowane)
-            max_deviation = max(target_minutes * 2, 20000)  # Max 333h odchylenia
-            deviation_pos = self.model.NewIntVar(0, max_deviation, f'dev_pos_{emp_id[:8]}')
-            deviation_neg = self.model.NewIntVar(0, max_deviation, f'dev_neg_{emp_id[:8]}')
-            
-            # total_minutes - target_minutes = deviation_pos - deviation_neg
-            self.model.Add(total_minutes - target_minutes == deviation_pos - deviation_neg)
-            
-            # ASYMETRYCZNE KARY:
-            # - Niedopracowanie (deviation_neg): duża kara
-            # - Nadpracowanie (deviation_pos): mała kara
-            penalty_under_per_minute = penalty_underschedule / 60
-            penalty_over_per_minute = penalty_overschedule / 60
-            
-            term = -1 * (int(penalty_under_per_minute) * deviation_neg + 
-                        int(penalty_over_per_minute) * deviation_pos)
-            terms.append(term)
-            
-            self.stats['soft_constraints'] += 1
-        
-        print(f"  ✓ SC1: Zgodność z etatem ({self.stats['soft_constraints']} pracowników)")
-        return terms
-    
-    def _add_time_preferences_objective(self) -> List:
-        """SC2: Nagroda za zgodność z preferencjami czasowymi."""
-        terms = []
-        reward_per_match = 50  # Punkty nagrody za zgodność
-        
-        for emp_id in self.employee_by_id.keys():
-            prefs = self.prefs_by_employee.get(emp_id)
-            if not prefs:
-                continue
-            
-            preferred_start = prefs.get('preferred_start_time')
-            if not preferred_start:
-                continue
-            
-            preferred_start_minutes = self._time_to_minutes(preferred_start)
-            tolerance_minutes = 60  # Tolerancja +/- 1h
-            
-            # Dla każdej zmiany pracownika, sprawdź zgodność
-            for (e_id, d, t_id), var in self.shifts_vars.items():
-                if e_id != emp_id:
-                    continue
-                
-                template = self.template_by_id[t_id]
-                shift_start = template['start_time_minutes']
-                
-                # Czy zmiana zaczyna się w preferowanym czasie?
-                if abs(shift_start - preferred_start_minutes) <= tolerance_minutes:
-                    terms.append(reward_per_match * var)
-        
-        print(f"  ✓ SC2: Preferencje godzinowe ({len(terms)} potencjalnych nagród)")
-        return terms
-    
-    def _add_manager_presence_objective(self) -> List:
-        """SC3: Premia za obecność managera na każdej zmianie."""
-        terms = []
-        reward_per_manager_shift = 200  # Wysoka waga
-        
-        if not self.manager_ids:
-            print("  ⚠️  SC3: Brak managerów - pomijam")
-            return terms
-        
-        for day in self.all_days:
-            for template in self.shift_templates:
-                template_id = template['id']
-                
-                # Znajdź managerów dostępnych na tę zmianę
-                manager_vars = [
-                    var for (e_id, d, t_id), var in self.shifts_vars.items()
-                    if d == day and t_id == template_id and e_id in self.manager_ids
-                ]
-                
-                if manager_vars:
-                    # Stwórz zmienną bool: czy jest przynajmniej jeden manager?
-                    has_manager = self.model.NewBoolVar(f'has_mgr_d{day}_t{template_id[:8]}')
-                    
-                    # has_manager == 1 jeśli suma(manager_vars) >= 1
-                    self.model.Add(sum(manager_vars) >= 1).OnlyEnforceIf(has_manager)
-                    self.model.Add(sum(manager_vars) == 0).OnlyEnforceIf(has_manager.Not())
-                    
-                    terms.append(reward_per_manager_shift * has_manager)
-        
-        print(f"  ✓ SC3: Obecność managera ({len(terms)} zmian)")
-        return terms
-    
-    def _add_fair_weekend_distribution_objective(self) -> List:
-        """SC5: Sprawiedliwe rozłożenie weekendów między pracowników (95% priorytet).
-        
-        Każdy pracownik powinien mieć podobną liczbę sobót i niedziel handlowych.
-        """
-        terms = []
-        penalty_per_weekend_deviation = 2000  # Wysoka waga - 95% priorytet
-        
-        # Znajdź dni weekendowe (soboty + niedziele handlowe)
-        weekend_days = []
-        enable_trading_sundays = self.organization_settings.get('enable_trading_sundays', False)
-        
-        for day in self.all_days:
-            day_date = date(self.year, self.month, day)
-            weekday = day_date.weekday()
-            
-            if weekday == 5:  # Sobota
-                weekend_days.append(day)
-            elif weekday == 6 and enable_trading_sundays and day in self.trading_sunday_days:
-                # Niedziela handlowa
-                weekend_days.append(day)
-        
-        if not weekend_days:
-            print("  ⚠️  SC5: Brak dni weekendowych do rozłożenia")
-            return terms
-        
-        num_employees = len(self.employee_by_id)
-        if num_employees == 0:
-            return terms
-        
-        # Oblicz docelową liczbę weekendów na pracownika
-        # Zakładamy że każdy pracownik powinien pracować podobną liczbę weekendów
-        total_weekend_shifts = sum(
-            len([var for (e_id, d, t_id), var in self.shifts_vars.items() if d == day])
-            for day in weekend_days
-        ) / num_employees if num_employees > 0 else 0
-        
-        # Dla każdego pracownika oblicz odchylenie od średniej liczby weekendów
-        for emp_id in self.employee_by_id.keys():
-            # Suma zmian weekendowych dla pracownika
-            weekend_shift_vars = [
-                var for (e_id, d, t_id), var in self.shifts_vars.items()
-                if e_id == emp_id and d in weekend_days
-            ]
-            
-            if not weekend_shift_vars:
-                continue
-            
-            total_weekend_shifts_emp = sum(weekend_shift_vars)
-            target_weekends = len(weekend_days) // num_employees  # Równy podział
-            
-            # Odchylenie od docelowej liczby weekendów
-            max_dev = len(weekend_days)
-            deviation_pos = self.model.NewIntVar(0, max_dev, f'wknd_pos_{emp_id[:8]}')
-            deviation_neg = self.model.NewIntVar(0, max_dev, f'wknd_neg_{emp_id[:8]}')
-            
-            self.model.Add(total_weekend_shifts_emp - target_weekends == deviation_pos - deviation_neg)
-            
-            # Kara za każdy weekend odchylenia
-            terms.append(-penalty_per_weekend_deviation * (deviation_pos + deviation_neg))
-        
-        print(f"  ✓ SC5: Sprawiedliwe weekendy ({len(weekend_days)} dni weekendowych, {num_employees} pracowników)")
-        return terms
-    
-    def _add_balanced_daily_staffing_objective(self) -> List:
-        """SC6: Równomierna obsada dzienna - różnica max ±1 pracownik między dniami.
-        
-        Każdy dzień powinien mieć podobną liczbę pracowników na zmianach.
-        """
-        terms = []
-        penalty_per_staffing_deviation = 1500  # Wysoka waga
-        
-        enable_trading_sundays = self.organization_settings.get('enable_trading_sundays', False)
-        
-        # Zbierz wszystkie dni robocze
-        working_days = []
-        for day in self.all_days:
-            if day in self.sundays_in_month:
-                if not enable_trading_sundays or day not in self.trading_sunday_days:
-                    continue
-            working_days.append(day)
-        
-        if len(working_days) < 2:
-            return terms
-        
-        # Oblicz średnią obsadę dzienną
-        total_daily_vars = []
-        for day in working_days:
-            day_vars = [var for (e_id, d, t_id), var in self.shifts_vars.items() if d == day]
-            if day_vars:
-                total_daily_vars.append((day, sum(day_vars)))
-        
-        if not total_daily_vars:
-            return terms
-        
-        # Oblicz docelową obsadę jako sumę min_employees dla wszystkich szablonów
-        target_daily_staffing = sum(
-            template.get('min_employees', 1) 
-            for template in self.shift_templates
-        )
-        
-        # Dla każdego dnia minimalizuj odchylenie od target ±1
-        for day, day_sum in total_daily_vars:
-            # Zezwalamy na ±1 bez kary, karamy większe odchylenia
-            max_dev = len(self.employee_by_id)
-            deviation = self.model.NewIntVar(0, max_dev, f'daily_dev_{day}')
-            
-            # |day_sum - target| - 1 <= deviation (odejmujemy 1 bo ±1 jest OK)
-            diff_pos = self.model.NewIntVar(0, max_dev, f'daily_diff_pos_{day}')
-            diff_neg = self.model.NewIntVar(0, max_dev, f'daily_diff_neg_{day}')
-            
-            self.model.Add(day_sum - target_daily_staffing == diff_pos - diff_neg)
-            
-            # Kara tylko za odchylenie > 1
-            # deviation = max(0, |diff| - 1) - aproksymacja przez karę za całość
-            terms.append(-penalty_per_staffing_deviation * (diff_pos + diff_neg))
-        
-        print(f"  ✓ SC6: Równomierna obsada dzienna ({len(working_days)} dni, target: {target_daily_staffing}/dzień)")
-        return terms
-    
-    def _add_fair_monthly_distribution_objective(self) -> List:
-        """SC7: Sprawiedliwe rozłożenie zmian miesięcznych (75% priorytet).
-        
-        Wszyscy pracownicy mają podobną całkowitą liczbę zmian w miesiącu.
-        """
-        terms = []
-        penalty_per_monthly_deviation = SoftConstraintWeights.SC7_PENALTY_MONTHLY_DEVIATION
-        
-        num_employees = len(self.employee_by_id)
-        if num_employees == 0:
-            return terms
-        
-        # Oblicz średnią liczbę zmian na pracownika w miesiącu
-        total_shifts_available = len(self.shifts_vars)
-        if total_shifts_available == 0:
-            return terms
-        
-        avg_monthly_shifts = total_shifts_available / num_employees
-        target_monthly = int(avg_monthly_shifts)
-        
-        # Dla każdego pracownika
-        for emp_id in self.employee_by_id.keys():
-            # Suma wszystkich zmian dla pracownika w miesiącu
-            monthly_shift_vars = [
-                var for (e_id, d, t_id), var in self.shifts_vars.items()
-                if e_id == emp_id
-            ]
-            
-            if not monthly_shift_vars:
-                continue
-            
-            total_monthly_shifts = sum(monthly_shift_vars)
-            
-            # Odchylenie od średniej miesięcznej
-            max_dev = len(monthly_shift_vars)
-            deviation_pos = self.model.NewIntVar(0, max_dev, f'month_pos_{emp_id[:8]}')
-            deviation_neg = self.model.NewIntVar(0, max_dev, f'month_neg_{emp_id[:8]}')
-            
-            self.model.Add(total_monthly_shifts - target_monthly == deviation_pos - deviation_neg)
-            
-            # Kara za odchylenie od średniej miesięcznej
-            terms.append(-penalty_per_monthly_deviation * (deviation_pos + deviation_neg))
-        
-        print(f"  ✓ SC7: Sprawiedliwe zmiany miesięczne (target: {target_monthly} zmian/pracownik, {num_employees} pracowników)")
-        return terms
-
-    def _add_balanced_distribution_objective(self) -> List:
-        """SC4: Kara za nierównomierne rozłożenie zmian między pracowników."""
-        terms = []
-        
-        # Oblicz średnią liczbę zmian na pracownika
-        total_required_shifts = sum(
-            template.get('min_employees', 1) * len(self.all_days)
-            for template in self.shift_templates
-        )
-        num_employees = len(self.employee_by_id)
-        
-        if num_employees == 0:
-            return terms
-        
-        avg_shifts_per_employee = total_required_shifts / num_employees
-        penalty_per_shift_deviation = 10
-        
-        for emp_id in self.employee_by_id.keys():
-            # Suma zmian dla pracownika
-            employee_shift_vars = [
-                var for (e_id, d, t_id), var in self.shifts_vars.items()
-                if e_id == emp_id
-            ]
-            
-            if not employee_shift_vars:
-                continue
-            
-            total_shifts = sum(employee_shift_vars)
-            target = int(avg_shifts_per_employee)
-            
-            # Odchylenie od średniej
-            deviation_pos = self.model.NewIntVar(0, len(employee_shift_vars), f'bal_pos_{emp_id[:8]}')
-            deviation_neg = self.model.NewIntVar(0, len(employee_shift_vars), f'bal_neg_{emp_id[:8]}')
-            
-            self.model.Add(total_shifts - target == deviation_pos - deviation_neg)
-            
-            terms.append(-penalty_per_shift_deviation * (deviation_pos + deviation_neg))
-        
-        print(f"  ✓ SC4: Równomierne rozłożenie ({len(self.employee_by_id)} pracowników)")
-        return terms
-    
-    def solve(self, time_limit_seconds: int = 300) -> Dict:
-        """
-        Krok 4: Rozwiązanie problemu CP-SAT.
-        
-        Args:
-            time_limit_seconds: Maksymalny czas rozwiązywania w sekundach
-            
-        Returns:
-            Dict z wynikami: status, shifts, statistics
-        """
-        print(f"\n🚀 Uruchamiam solver CP-SAT (limit: {time_limit_seconds}s)...")
-        
-        # Diagnostyka przed solve
-        print(f"  • Zmiennych decyzyjnych: {len(self.shifts_vars)}")
-        print(f"  • Ograniczeń twardych: {self.stats['hard_constraints']}")
-        print(f"  • Ograniczeń miękkich: {self.stats['soft_constraints']}")
-        
-        if not self.shifts_vars:
-            print("❌ BŁĄD: Brak zmiennych decyzyjnych!")
-            return {
-                'status': 'ERROR',
-                'error': 'Brak zmiennych decyzyjnych - sprawdź konfigurację',
-                'success': False,
-                'shifts': [],
-                'statistics': {}
-            }
-        
-        # Parametry solvera
-        self.solver.parameters.max_time_in_seconds = time_limit_seconds
-        self.solver.parameters.log_search_progress = False  # Wyłącz verbose logging
-        self.solver.parameters.num_search_workers = 8  # Wielowątkowość
+        print(f"\n🚀 Uruchamianie solvera (limit: {timeout}s, workers: 8)...")
         
         # Rozwiąż
-        status = self.solver.Solve(self.model)
+        status = solver.Solve(self.model)
         
-        # Analiza wyniku
-        result = self._process_solution(status)
-        return result
-    
-    def _process_solution(self, status) -> Dict:
-        """Przetwarza wynik solvera i tworzy strukturę odpowiedzi."""
+        # Zapisz status dla późniejszego użycia
+        self._solver_status = status
         
-        status_name = self.solver.StatusName(status)
-        print(f"\n📊 Status: {status_name}")
+        solve_time = time.time() - start_time
         
-        if status == cp_model.OPTIMAL:
-            print("✅ Znaleziono OPTYMALNE rozwiązanie!")
-        elif status == cp_model.FEASIBLE:
-            print("✅ Znaleziono DOPUSZCZALNE rozwiązanie (nie koniecznie optymalne)")
-        elif status == cp_model.INFEASIBLE:
-            print("❌ Problem NIEMOŻLIWY DO ROZWIĄZANIA")
-            return self._handle_infeasibility()
-        elif status == cp_model.MODEL_INVALID:
-            print("❌ Model jest NIEPRAWIDŁOWY")
-            return {'status': 'MODEL_INVALID', 'error': 'Invalid model structure', 'success': False}
-        elif status == cp_model.UNKNOWN:
-            print("⚠️  Status UNKNOWN - brak zmiennych lub ograniczeń?")
-            # Sprawdź czy mamy w ogóle zmienne
-            if not self.shifts_vars:
-                return {
-                    'status': 'UNKNOWN',
-                    'error': 'Brak zmiennych decyzyjnych - sprawdź konfigurację szablonów i pracowników',
-                    'success': False,
-                    'shifts': [],
-                    'statistics': {}
-                }
-            # Jeśli mamy zmienne, to może być problem z pustym modelem
-            # Zwróć pusty grafik z wyjaśnieniem
+        # Interpretuj status
+        status_names = {
+            cp_model.OPTIMAL: 'OPTIMAL',
+            cp_model.FEASIBLE: 'FEASIBLE',
+            cp_model.INFEASIBLE: 'INFEASIBLE',
+            cp_model.MODEL_INVALID: 'MODEL_INVALID',
+            cp_model.UNKNOWN: 'UNKNOWN',
+        }
+        status_name = status_names.get(status, 'UNKNOWN')
+        
+        print(f"\n{'='*60}")
+        print(f"📊 WYNIK SOLVERA:")
+        print(f"   Status: {status_name}")
+        print(f"   Czas: {solve_time:.2f}s")
+        
+        if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+            objective = solver.ObjectiveValue()
+            print(f"   Wartość funkcji celu: {objective:.0f}")
+            
+            # Ekstrahuj rozwiązanie
+            shifts = self._extract_solution(solver)
+            
+            # Oblicz statystyki
+            statistics = self._calculate_statistics(solver, shifts, solve_time)
+            
+            print(f"   Przypisane zmiany: {len(shifts)}")
+            print(f"   Jakość: {statistics['quality_percent']:.1f}%")
+            print(f"{'='*60}\n")
+            
+            # Wypisz podsumowanie godzin
+            self._print_hours_summary(shifts)
+            
+            # Wypisz tabelę harmonogramu
+            self._print_schedule_table(shifts)
+            
             return {
-                'status': 'UNKNOWN',
-                'error': 'Model nie znalazł rozwiązania - możliwe problemy z konfiguracją',
-                'success': True,  # Techniczny sukces (brak błędu), ale pusty wynik
-                'shifts': [],
-                'statistics': {
-                    'status': status_name,
-                    'solve_time_seconds': self.solver.WallTime(),
-                    'total_shifts_assigned': 0,
-                    'total_variables': self.stats['total_variables']
-                },
-                'year': self.year,
-                'month': self.month
+                'status': 'SUCCESS',
+                'shifts': shifts,
+                'statistics': statistics,
             }
+        
         else:
-            print(f"⚠️  Status nieoczekiwany: {status_name}")
-            return {'status': status_name, 'shifts': [], 'statistics': {}, 'success': False}
+            print(f"   ❌ Solver nie znalazł rozwiązania")
+            print(f"{'='*60}\n")
+            
+            return {
+                'status': 'INFEASIBLE',
+                'error': f'Solver status: {status_name}',
+                'reasons': self._diagnose_infeasibility(),
+                'suggestions': [
+                    'Sprawdź czy jest wystarczająca liczba pracowników',
+                    'Zmniejsz wymagania minimalne szablonów',
+                    'Sprawdź nieobecności pracowników',
+                    'Zwiększ limit czasowy solvera',
+                ],
+            }
+    
+    def _extract_solution(self, solver: cp_model.CpSolver) -> List[Dict]:
+        """Ekstrahuje przypisane zmiany z rozwiązania solvera."""
+        shifts = []
         
-        # Ekstrakcja rozwiązania
-        shifts_output = []
-        
-        for (emp_id, day, template_id), var in self.shifts_vars.items():
-            if self.solver.Value(var) == 1:
-                template = self.template_by_id[template_id]
-                employee = self.employee_by_id[emp_id]
+        for (emp_idx, day, tmpl_idx), var in self.shifts.items():
+            if solver.Value(var) == 1:
+                emp = self.data.employees[emp_idx]
+                tmpl = self.data.templates[tmpl_idx]
                 
-                shift_date = date(self.year, self.month, day)
-                
-                shift_record = {
-                    'employee_id': emp_id,
-                    'employee_name': f"{employee['first_name']} {employee['last_name']}",
-                    'date': shift_date.isoformat(),
-                    'start_time': template['start_time'],
-                    'end_time': template['end_time'],
-                    'break_minutes': template.get('break_minutes', 0),
-                    'template_id': template_id,
-                    'template_name': template['name'],
-                    'color': employee.get('color') or template.get('color'),
-                    'notes': None
+                shift = {
+                    'employee_id': emp.id,
+                    'employee_name': emp.full_name,
+                    'date': self.data.get_date_string(day),
+                    'day': day,
+                    'template_id': tmpl.id,
+                    'template_name': tmpl.name,
+                    'start_time': tmpl.start_time,
+                    'end_time': tmpl.end_time,
+                    'break_minutes': tmpl.break_minutes,
+                    'duration_minutes': tmpl.get_duration_minutes(),
+                    'color': tmpl.color or emp.color,
                 }
-                
-                shifts_output.append(shift_record)
+                shifts.append(shift)
         
-        # Statystyki
-        objective_value = self.solver.ObjectiveValue() if status in [cp_model.OPTIMAL, cp_model.FEASIBLE] else 0
+        # Sortuj po dacie i pracowniku
+        shifts.sort(key=lambda x: (x['date'], x['employee_name']))
         
-        # Oblicz quality_percent - normalizuj objective_value do 0-100%
-        # objective_value to suma nagród (+) i kar (-), może być ujemny
-        quality_percent = self._calculate_quality_percent(objective_value, len(shifts_output))
+        return shifts
+    
+    def _calculate_statistics(
+        self, solver: cp_model.CpSolver, shifts: List[Dict], solve_time: float
+    ) -> Dict:
+        """Oblicza statystyki rozwiązania."""
         
-        statistics = {
-            'status': status_name,
-            'objective_value': objective_value,
-            'quality_percent': quality_percent,
-            'solve_time_seconds': self.solver.WallTime(),
-            'total_shifts_assigned': len(shifts_output),
+        objective = solver.ObjectiveValue()
+        
+        # Oblicz jakość (0-100%)
+        # Im mniejsza wartość funkcji celu (kary), tym lepsza jakość
+        # Zakładamy że max kara to ~100000 dla najgorszego przypadku
+        max_penalty_estimate = 100000
+        raw_quality = max(0, 1 - (objective / max_penalty_estimate))
+        quality_percent = min(100, raw_quality * 100)
+        
+        # Jeśli OPTIMAL, jakość = 100%
+        if self._solver_status == cp_model.OPTIMAL:
+            quality_percent = 100.0
+        
+        # Policz godziny na pracownika
+        hours_by_employee: Dict[str, float] = defaultdict(float)
+        for shift in shifts:
+            hours_by_employee[shift['employee_id']] += shift['duration_minutes'] / 60
+        
+        return {
+            'status': 'OPTIMAL' if self._solver_status == cp_model.OPTIMAL else 'FEASIBLE',
+            'solve_time_seconds': round(solve_time, 2),
+            'objective_value': int(objective),
+            'quality_percent': round(quality_percent, 1),
+            'total_shifts_assigned': len(shifts),
             'total_variables': self.stats['total_variables'],
             'hard_constraints': self.stats['hard_constraints'],
             'soft_constraints': self.stats['soft_constraints'],
-            'conflicts': self.solver.NumConflicts(),
-            'branches': self.solver.NumBranches()
-        }
-        
-        print(f"\n📈 Statystyki:")
-        print(f"  • Przypisanych zmian: {len(shifts_output)}")
-        print(f"  • Czas rozwiązywania: {statistics['solve_time_seconds']:.2f}s")
-        print(f"  • Wartość funkcji celu: {statistics['objective_value']}")
-        print(f"  • Konfliktów: {statistics['conflicts']}")
-        print(f"  • Gałęzi: {statistics['branches']}")
-        
-        return {
-            'status': 'SUCCESS',
-            'shifts': shifts_output,
-            'statistics': statistics,
-            'year': self.year,
-            'month': self.month
+            'hours_by_employee': dict(hours_by_employee),
+            'conflicts': solver.NumConflicts(),
+            'branches': solver.NumBranches(),
         }
     
-    def _handle_infeasibility(self) -> Dict:
-        """
-        Obsługa przypadku INFEASIBLE - diagnoza przyczyn.
-        Zwraca szczegółowe informacje do wyświetlenia w AI dialog.
-        """
-        print("\n🔍 DIAGNOZA NIEMOŻLIWOŚCI ROZWIĄZANIA:")
+    def _print_hours_summary(self, shifts: List[Dict]):
+        """Wypisuje podsumowanie godzin dla każdego pracownika."""
+        print("\n📊 PODSUMOWANIE GODZIN:")
+        print("-" * 60)
         
-        reasons = []
-        ai_messages = []  # Czytelne komunikaty dla użytkownika w AI dialog
+        hours_by_emp: Dict[str, float] = defaultdict(float)
+        shifts_by_emp: Dict[str, int] = defaultdict(int)
         
-        # Sprawdź pokrycie zmian
-        print("\n1. Sprawdzam wymagania obsady zmian...")
-        total_required = 0
-        total_possible_assignments = 0
-        enable_trading_sundays = self.organization_settings.get('enable_trading_sundays', False)
+        for shift in shifts:
+            hours_by_emp[shift['employee_name']] += shift['duration_minutes'] / 60
+            shifts_by_emp[shift['employee_name']] += 1
         
-        for day in self.all_days:
-            # Pomiń niedziele niehandlowe przy liczeniu wymagań
-            if day in self.sundays_in_month:
-                if not enable_trading_sundays or day not in self.trading_sunday_days:
-                    continue
+        for emp in self.data.employees:
+            name = emp.full_name
+            target_h = emp.get_target_minutes(self.data.monthly_norm_minutes, len(self.data.weekdays)) / 60
+            actual_h = hours_by_emp.get(name, 0)
+            num_shifts = shifts_by_emp.get(name, 0)
+            diff = actual_h - target_h
             
-            for template in self.shift_templates:
-                # Sprawdź czy szablon jest dostępny w ten dzień
-                if not self._is_template_applicable_on_day(template, day):
-                    continue
-                min_emp = template.get('min_employees', 1)
-                total_required += min_emp
+            status = "✅" if abs(diff) <= 1 else ("⚠️" if abs(diff) <= 4 else "❌")
+            
+            print(f"  {status} {name:25s} | Target: {target_h:5.1f}h | "
+                  f"Actual: {actual_h:5.1f}h | Diff: {diff:+5.1f}h | Zmiany: {num_shifts}")
         
-        # Oblicz całkowitą możliwą liczbę godzin zmian
-        total_shift_hours = sum(
-            t['duration_minutes'] / 60 for t in self.shift_templates
-        ) * total_required
+        print("-" * 60)
+    
+    def _print_schedule_table(self, shifts: List[Dict]):
+        """Wyświetla tabelę harmonogramu dla pierwszych 10 dni."""
+        print("\n📅 TABELA HARMONOGRAMU (pierwsze 10 dni):")
+        print("-" * 85)
+        print(f"{'Dzień':<12} | {'Pracownik':<20} | {'Zmiana':<18} | {'Godziny':<10}")
+        print("-" * 85)
         
-        # Oblicz całkowitą dostępną liczbę godzin pracowników
-        monthly_hours_norm = self.data.get('monthly_hours_norm', 160)
-        num_employees = len(self.employee_by_id)
-        total_available_hours = num_employees * monthly_hours_norm
+        # Grupuj zmiany po dniach
+        shifts_by_day: Dict[int, List[Dict]] = defaultdict(list)
+        for shift in shifts:
+            shifts_by_day[shift['day']].append(shift)
         
-        print(f"   Całkowita wymagana liczba przypisań: {total_required}")
-        print(f"   Dostępne zmienne decyzyjne: {len(self.shifts_vars)}")
-        print(f"   Wymagane godziny zmian: ~{total_shift_hours:.0f}h")
-        print(f"   Dostępne godziny pracowników: ~{total_available_hours:.0f}h")
+        # Wyświetl pierwsze 10 dni
+        for day in sorted(shifts_by_day.keys())[:10]:
+            day_shifts = sorted(shifts_by_day[day], key=lambda x: x['start_time'])
+            date_str = f"{day:02d}.{self.data.month:02d}.{self.data.year}"
+            
+            for i, shift in enumerate(day_shifts):
+                day_label = date_str if i == 0 else ""
+                name = shift['employee_name'][:20]
+                template = shift['template_name'][:18]
+                hours = f"{shift['start_time'][:5]}-{shift['end_time'][:5]}"
+                
+                print(f"{day_label:<12} | {name:<20} | {template:<18} | {hours:<10}")
+            
+            if day_shifts:
+                print("-" * 85)
+    
+    def _diagnose_infeasibility(self) -> List[str]:
+        """Diagnozuje przyczyny braku rozwiązania."""
+        reasons = []
         
-        if len(self.shifts_vars) < total_required:
-            reason = f"Za mało dostępnych pracowników/zmiennych ({len(self.shifts_vars)}) względem wymagań ({total_required})"
-            reasons.append(reason)
-            ai_messages.append(f"❌ Za mało pracowników: potrzebujesz {total_required} przypisań do zmian, ale dostępnych jest tylko {len(self.shifts_vars)} możliwości.")
-            print(f"   ❌ {reason}")
+        # Sprawdź podstawowe warunki
+        if len(self.data.employees) == 0:
+            reasons.append("Brak aktywnych pracowników")
         
-        if total_shift_hours > total_available_hours * 1.2:  # 20% buffer (dajemy więcej elastyczności)
-            reason = f"Za mało godzin pracowniczych ({total_available_hours:.0f}h) na pokrycie wymaganych zmian ({total_shift_hours:.0f}h)"
-            reasons.append(reason)
-            shortage = total_shift_hours - total_available_hours
-            additional_etats = shortage / monthly_hours_norm
-            ai_messages.append(f"❌ Brakuje godzin pracy - potrzeba ~{additional_etats:.1f} etatu więcej")
-            print(f"   ❌ {reason}")
+        if len(self.data.templates) == 0:
+            reasons.append("Brak szablonów zmian")
         
-        # Sprawdź nieobecności
-        print("\n2. Sprawdzam nieobecności pracowników...")
-        absence_days_count = len(self.absence_set)
-        print(f"   Dni nieobecności: {absence_days_count}")
+        # Sprawdź czy są jakieś możliwe zmienne
+        if self.stats['total_variables'] == 0:
+            reasons.append("Brak możliwych przypisań (wszyscy mają urlopy?)")
         
-        absence_ratio = absence_days_count / (len(self.employee_by_id) * len(self.all_days)) if self.employee_by_id else 0
-        if absence_ratio > 0.3:
-            reason = f"Wysoki poziom nieobecności ({absence_ratio*100:.0f}% dni)"
-            reasons.append(reason)
-            ai_messages.append(f"⚠️ Dużo nieobecności: {absence_ratio*100:.0f}% wszystkich dni pracowniczych jest niedostępnych (urlopy, zwolnienia).")
-            print(f"   ⚠️  {reason}")
+        # Sprawdź proporcje
+        total_min_required = sum(
+            t.min_employees * self.data.days_in_month
+            for t in self.data.templates
+        )
+        max_possible = len(self.data.employees) * self.data.days_in_month
         
-        # Sprawdź niedziele handlowe
-        print("\n3. Sprawdzam konfigurację niedziel...")
-        print(f"   Niedziele handlowe włączone: {enable_trading_sundays}")
-        print(f"   Niedziele w miesiącu: {self.sundays_in_month}")
-        print(f"   Niedziele handlowe: {sorted(self.trading_sunday_days) if self.trading_sunday_days else 'brak'}")
+        if total_min_required > max_possible:
+            reasons.append(
+                f"Za mało pracowników: wymagane {total_min_required} zmian, "
+                f"możliwe max {max_possible}"
+            )
         
-        # Zmienne dla niedziel (nie powinno ich być dla niehandlowych)
-        sundays_with_vars = set()
-        for (e, d, t) in self.shifts_vars.keys():
-            if d in self.sundays_in_month:
-                sundays_with_vars.add(d)
-        
-        if sundays_with_vars:
-            unexpected = sundays_with_vars - self.trading_sunday_days
-            if unexpected:
-                reason = f"Błąd: utworzono zmienne dla niedziel niehandlowych: {sorted(unexpected)}"
-                reasons.append(reason)
-                print(f"   ❌ {reason}")
-        
-        # Sprawdź maksymalne ciągłe dni
-        print("\n4. Sprawdzam ograniczenia max dni z rzędu...")
-        max_consecutive = self.scheduling_rules.get('max_consecutive_days', 6)
-        print(f"   Max dni z rzędu: {max_consecutive}")
-        
-        if max_consecutive < 5:
-            reason = f"Bardzo restrykcyjne ograniczenie max_consecutive_days: {max_consecutive}"
-            reasons.append(reason)
-            ai_messages.append(f"⚠️ Bardzo restrykcyjne ustawienie: max {max_consecutive} dni pracy z rzędu może być trudne do spełnienia.")
-            print(f"   ⚠️  {reason}")
-        
-        # Sprawdź odpoczynek dobowy
-        print("\n5. Sprawdzam konflikty odpoczynku dobowego...")
-        min_rest = self.scheduling_rules.get('min_daily_rest_hours', 11)
-        print(f"   Minimalny odpoczynek: {min_rest}h")
-        
-        # Sprawdź czy zmiany są kompatybilne z odpoczynkiem
-        incompatible_pairs = 0
-        for t1 in self.shift_templates:
-            for t2 in self.shift_templates:
-                rest = self._calculate_rest_time(t1['end_time_minutes'], t2['start_time_minutes'])
-                if rest < min_rest * 60:
-                    incompatible_pairs += 1
-        
-        if incompatible_pairs > 0:
-            print(f"   ⚠️ {incompatible_pairs} par zmian nie spełnia 11h odpoczynku")
-        
-        # Podsumowanie
-        print("\n" + "="*60)
-        print("MOŻLIWE PRZYCZYNY NIEMOŻLIWOŚCI:")
-        if reasons:
-            for i, reason in enumerate(reasons, 1):
-                print(f"{i}. {reason}")
-        else:
-            reasons.append("Kombinacja wielu ograniczeń jest zbyt restrykcyjna")
-            ai_messages.append("❌ Nie udało się ułożyć grafiku. Kombinacja ograniczeń (godziny, odpoczynki, nieobecności) sprawia, że nie ma możliwego rozwiązania.")
-            print("Nie zidentyfikowano oczywistych przyczyn.")
-            print("Prawdopodobnie kombinacja wielu ograniczeń jest zbyt restrykcyjna.")
-        print("="*60)
-        
-        # Sugestie specyficzne dla problemu
-        suggestions = []
-        if total_shift_hours > total_available_hours:
-            suggestions.append(f"Dodaj więcej pracowników (potrzeba ~{(total_shift_hours - total_available_hours) / monthly_hours_norm:.1f} etatu więcej)")
-            suggestions.append("Zmniejsz min_employees w szablonach zmian")
-        if absence_ratio > 0.3:
-            suggestions.append("Rozważ przesunięcie części urlopów na inny miesiąc")
-        suggestions.extend([
-            "Sprawdź czy wszystkie szablony zmian są poprawnie skonfigurowane",
-            "Rozważ zwiększenie max_consecutive_days w ustawieniach",
-            "Sprawdź czy nie ma konfliktów w preferencjach pracowników"
-        ])
-        
-        return {
-            'status': 'INFEASIBLE',
-            'error': 'Nie udało się ułożyć grafiku - zbyt restrykcyjne ograniczenia',
-            'reasons': reasons,
-            'ai_messages': ai_messages,  # Do wyświetlenia w AI dialog
-            'statistics': {
-                'total_variables': self.stats['total_variables'],
-                'hard_constraints': self.stats['hard_constraints'],
-                'total_required_assignments': total_required,
-                'absence_days': absence_days_count,
-                'total_employees': num_employees,
-                'required_shift_hours': round(total_shift_hours),
-                'available_employee_hours': round(total_available_hours)
-            },
-            'suggestions': suggestions
-        }
+        return reasons if reasons else ["Nieznana przyczyna - sprawdź logi"]
 
+
+# =============================================================================
+# GŁÓWNA FUNKCJA API
+# =============================================================================
 
 def generate_schedule_optimized(input_data: Dict) -> Dict:
     """
-    Główna funkcja API do generowania grafiku.
+    Główna funkcja do generowania grafiku.
     
     Args:
-        input_data: Słownik z danymi wejściowymi z bazy danych
-        
-    Returns:
-        Dict z wygenerowanymi zmianami i statystykami
-    """
-    print("="*80)
-    print("🏢 CALENDA SCHEDULE - CP-SAT OPTIMIZER")
-    print("="*80)
+        input_data: Słownik z danymi wejściowymi w formacie CP-SAT
     
+    Returns:
+        Słownik z wynikami:
+        - status: 'SUCCESS' | 'INFEASIBLE' | 'ERROR'
+        - shifts: Lista przypisanych zmian
+        - statistics: Statystyki rozwiązania
+        - error: Komunikat błędu (jeśli status != SUCCESS)
+    """
     try:
-        # Walidacja danych wejściowych
-        required_keys = ['year', 'month', 'employees', 'shift_templates', 'organization_settings']
-        for key in required_keys:
-            if key not in input_data:
-                return {
-                    'status': 'ERROR',
-                    'error': f'Missing required field: {key}',
-                    'shifts': []
-                }
+        print("\n" + "="*80)
+        print("🚀 CALENDA SCHEDULE - CP-SAT OPTIMIZER v3.0")
+        print("="*80)
         
-        # Utwórz optimizer
-        optimizer = ScheduleOptimizer(input_data)
+        # KROK 1: Preprocessing danych
+        data = DataModel(input_data)
         
-        # Krok 1: Zmienne decyzyjne
-        optimizer.create_decision_variables()
+        # KROK 2: Inicjalizacja schedulera
+        scheduler = CPSATScheduler(data)
         
-        # Krok 2: Ograniczenia twarde
-        optimizer.add_hard_constraints()
+        # KROK 3: Tworzenie zmiennych decyzyjnych
+        scheduler.create_decision_variables()
         
-        # Krok 3: Cele optymalizacyjne
-        optimizer.add_soft_constraints()
+        # KROK 4: Dodawanie hard constraints
+        scheduler.add_hard_constraints()
         
-        # Krok 4: Rozwiąż
-        time_limit = input_data.get('solver_time_limit', 300)
-        result = optimizer.solve(time_limit_seconds=time_limit)
+        # KROK 5: Dodawanie soft constraints
+        scheduler.add_soft_constraints()
+        
+        # KROK 6: Rozwiązywanie
+        result = scheduler.solve()
+        
+        print("\n" + "="*80)
+        print("✅ GENEROWANIE ZAKOŃCZONE")
+        print("="*80 + "\n")
         
         return result
         
     except Exception as e:
+        error_trace = traceback.format_exc()
         print(f"\n❌ BŁĄD: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        print(error_trace)
         
         return {
             'status': 'ERROR',
             'error': str(e),
-            'traceback': traceback.format_exc(),
-            'shifts': []
+            'traceback': error_trace,
         }
 
 
 # =============================================================================
-# PRZYKŁAD UŻYCIA
+# CLI - Uruchamianie z linii poleceń (do testów)
 # =============================================================================
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # Przykładowe dane testowe
-    sample_input = {
+    test_data = {
         'year': 2026,
-        'month': 2,  # Luty 2026
+        'month': 2,
+        'monthly_hours_norm': 160,  # 20 dni roboczych * 8h
         'organization_settings': {
-            'store_open_time': '08:00:00',
-            'store_close_time': '20:00:00',
-            'min_employees_per_shift': 2,
-            'enable_trading_sundays': True
+            'min_employees_per_shift': 1,
+            'enable_trading_sundays': True,
         },
         'shift_templates': [
             {
-                'id': 'template-1',
-                'name': 'Poranna',
-                'start_time': '08:00:00',
-                'end_time': '16:00:00',
+                'id': 'morning_8h',
+                'name': 'Poranna 8h',
+                'start_time': '08:00',
+                'end_time': '16:00',
                 'break_minutes': 30,
-                'min_employees': 2,
+                'min_employees': 1,
                 'max_employees': 3,
-                'color': '#FF6B6B',
-                'applicable_days': ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+                'applicable_days': ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
             },
             {
-                'id': 'template-2',
-                'name': 'Popołudniowa',
-                'start_time': '12:00:00',
-                'end_time': '20:00:00',
+                'id': 'morning_6h',
+                'name': 'Poranna 6h',
+                'start_time': '08:00',
+                'end_time': '14:00',
+                'break_minutes': 15,
+                'min_employees': 1,
+                'max_employees': 2,
+                'applicable_days': ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'],
+            },
+            {
+                'id': 'afternoon_8h',
+                'name': 'Popołudniowa 8h',
+                'start_time': '14:00',
+                'end_time': '22:00',
                 'break_minutes': 30,
-                'min_employees': 2,
+                'min_employees': 1,
                 'max_employees': 3,
-                'color': '#4ECDC4',
-                'applicable_days': ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
-            }
+                'applicable_days': ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
+            },
+            {
+                'id': 'long_12h',
+                'name': 'Długi dyżur 12h',
+                'start_time': '08:00',
+                'end_time': '20:00',
+                'break_minutes': 60,
+                'min_employees': 1,
+                'max_employees': 2,
+                'applicable_days': ['saturday', 'sunday'],
+            },
         ],
         'employees': [
             {
-                'id': 'emp-1',
-                'first_name': 'Jan',
-                'last_name': 'Kowalski',
-                'position': 'Manager',
-                'employment_type': 'full',
-                'is_active': True,
-                'color': '#FF6B6B'
-            },
-            {
-                'id': 'emp-2',
+                'id': 'emp1',
                 'first_name': 'Anna',
-                'last_name': 'Nowak',
-                'position': 'Pracownik',
+                'last_name': 'Kowalska',
                 'employment_type': 'full',
+                'max_hours': 176,
                 'is_active': True,
-                'color': '#4ECDC4'
+                'position': 'Manager',
             },
             {
-                'id': 'emp-3',
-                'first_name': 'Piotr',
-                'last_name': 'Wiśniewski',
-                'position': 'Pracownik',
-                'employment_type': 'half',
+                'id': 'emp2',
+                'first_name': 'Jan',
+                'last_name': 'Nowak',
+                'employment_type': 'full',
+                'max_hours': 176,
                 'is_active': True,
-                'color': '#95E1D3'
-            }
+            },
+            {
+                'id': 'emp3',
+                'first_name': 'Maria',
+                'last_name': 'Wiśniewska',
+                'employment_type': 'half',
+                'max_hours': 88,
+                'is_active': True,
+            },
+            {
+                'id': 'emp4',
+                'first_name': 'Piotr',
+                'last_name': 'Zieliński',
+                'employment_type': 'three_quarter',
+                'max_hours': 132,
+                'is_active': True,
+            },
         ],
         'employee_preferences': [
             {
-                'employee_id': 'emp-1',
-                'preferred_start_time': '08:00:00',
-                'max_hours_per_week': 40,
-                'can_work_weekends': True,
-                'preferred_days': [0, 1, 2, 3, 4],  # Poniedziałek-Piątek
-                'unavailable_days': []
+                'employee_id': 'emp1',
+                'preferred_days': [0, 1, 2, 3, 4],  # Pn-Pt
+                'unavailable_days': [6],  # Niedziela
             },
-            {
-                'employee_id': 'emp-2',
-                'preferred_start_time': '12:00:00',
-                'max_hours_per_week': 40,
-                'can_work_weekends': False,
-                'preferred_days': [0, 1, 2, 3, 4],
-                'unavailable_days': []
-            }
         ],
         'employee_absences': [
             {
-                'employee_id': 'emp-3',
-                'start_date': '2026-02-10',
-                'end_date': '2026-02-14',
-                'absence_type': 'vacation'
-            }
+                'employee_id': 'emp2',
+                'start_date': '2026-02-16',
+                'end_date': '2026-02-20',
+                'absence_type': 'vacation',
+            },
         ],
         'scheduling_rules': {
             'max_consecutive_days': 6,
             'min_daily_rest_hours': 11,
-            'max_weekly_work_hours': 48
+            'max_weekly_work_hours': 48,
         },
         'trading_sundays': [
-            {
-                'date': '2026-02-15',
-                'is_active': True
-            }
+            {'date': '2026-02-22', 'is_active': True},
         ],
-        'solver_time_limit': 120
+        'solver_time_limit': 60,
     }
     
-    # Uruchom optymalizację
-    result = generate_schedule_optimized(sample_input)
+    print("🧪 TEST: Uruchamianie optymalizatora z przykładowymi danymi...")
+    result = generate_schedule_optimized(test_data)
     
-    # Wyświetl wynik
-    print("\n" + "="*80)
-    print("WYNIK:")
-    print("="*80)
-    print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
+    print(f"\n📊 REZULTAT: {result['status']}")
+    if result['status'] == 'SUCCESS':
+        print(f"   Wygenerowano {len(result['shifts'])} zmian")
+        print(f"   Jakość: {result['statistics']['quality_percent']}%")

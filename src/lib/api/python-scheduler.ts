@@ -165,21 +165,21 @@ export async function generateScheduleWithPython(
 }> {
     const transformedInput: PythonInput = transformInputForPython(input);
 
-    // Log godzin otwarcia sklepu
+    // Log godzin otwarcia sklepu (z oryginalnego inputu - transformedInput nie ma settings)
     console.log(
         "\n🕐 === GODZINY OTWARCIA SKLEPU (generateScheduleWithPython) ===",
     );
     console.log(
-        `Original input.settings.store_open_time: ${input.settings.store_open_time}`,
+        `Original input.settings.store_open_time: ${input.settings?.store_open_time}`,
     );
     console.log(
-        `Original input.settings.store_close_time: ${input.settings.store_close_time}`,
+        `Original input.settings.store_close_time: ${input.settings?.store_close_time}`,
     );
     console.log(
-        `Transformed settings.store_open_time: ${transformedInput.settings.store_open_time}`,
+        `Transformed monthly_hours_norm: ${transformedInput.monthly_hours_norm}`,
     );
     console.log(
-        `Transformed settings.store_close_time: ${transformedInput.settings.store_close_time}`,
+        `Transformed employees count: ${transformedInput.employees.length}`,
     );
     console.log("=" + "=".repeat(60) + "\n");
 

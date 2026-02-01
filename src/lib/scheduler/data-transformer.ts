@@ -1,12 +1,3 @@
-/**
- * =============================================================================
- * DATA TRANSFORMER - DRY PRINCIPLE
- * =============================================================================
- *
- * Centralized data transformation utilities for Python API integration.
- * All data formatting, calculations, and transformations in one place.
- */
-
 import type { SchedulerInput, EmployeeWithData } from "@/lib/scheduler/types";
 import type { ShiftTemplate } from "@/types";
 
@@ -47,7 +38,6 @@ export interface PythonTemplate {
     is_weekend: boolean;
     min_employees: number;
     max_employees: number | null;
-    // Note: color removed - UI only, not needed for calculations
 }
 
 export interface PythonInput {
@@ -56,10 +46,6 @@ export interface PythonInput {
     monthly_hours_norm: number;
     employees: PythonEmployee[];
     templates: PythonTemplate[];
-    settings: {
-        // Note: Most settings removed - not used by Python scheduler
-        // Only kept for backwards compatibility with Genetic API (deprecated)
-    };
     holidays: Array<{
         date: string;
         name: string;
@@ -91,7 +77,6 @@ export interface CPSATTemplate {
     min_employees: number;
     max_employees: number | null;
     applicable_days?: string[] | null;
-    // Note: color removed - UI only, not needed for CP-SAT solver
 }
 
 export interface CPSATInput {
@@ -99,12 +84,12 @@ export interface CPSATInput {
     month: number;
     monthly_hours_norm: number;
     organization_settings: {
-        min_employees_per_shift?: number; // HC7 - minimum staff per shift
-        enable_trading_sundays?: boolean; // HC5 - allow work on trading Sundays
+        min_employees_per_shift?: number;
+        enable_trading_sundays?: boolean;
         opening_hours?: Record<
             string,
             { open: string | null; close: string | null }
-        >; // HC7 - store hours by day of week
+        >;
     };
     shift_templates: CPSATTemplate[];
     employees: CPSATEmployee[];
@@ -193,11 +178,7 @@ export function formatTime(time: string): string {
  * - 20 dni roboczych (Pn-Pt) → 160h normy
  * - 5 sobót + 4 niedziele = 9 dni dodatkowych (możliwych, ale poza normą)
  */
-export function calculateMonthlyHoursNorm(
-    workDaysCount: number,
-    saturdayCount: number,
-    tradingSundayCount: number,
-): number {
+export function calculateMonthlyHoursNorm(workDaysCount: number): number {
     // NORMA = tylko dni robocze (Pn-Pt) × 8h
     return workDaysCount * 8;
 }
@@ -386,11 +367,7 @@ export function transformInputForPython(input: SchedulerInput): PythonInput {
         workDaysCount + saturdayCount + tradingSundayCount;
 
     // Oblicz normę godzin dla pełnego etatu
-    const monthlyHoursNorm = calculateMonthlyHoursNorm(
-        workDaysCount,
-        saturdayCount,
-        tradingSundayCount,
-    );
+    const monthlyHoursNorm = calculateMonthlyHoursNorm(workDaysCount);
 
     return {
         year: input.year,
@@ -400,10 +377,6 @@ export function transformInputForPython(input: SchedulerInput): PythonInput {
             transformEmployeeToPython(emp, monthlyHoursNorm, totalWorkableDays),
         ),
         templates: input.templates.map(transformTemplateToPython),
-        settings: {
-            // Empty - Python Genetic API (deprecated) doesn't use these
-            // Kept for backwards compatibility only
-        },
         holidays: input.holidays.map((hol) => ({
             date: hol.date,
             name: hol.localName || hol.name,
@@ -422,27 +395,19 @@ export function transformInputForPython(input: SchedulerInput): PythonInput {
  */
 export function transformInputForCPSAT(input: SchedulerInput): CPSATInput {
     const workDaysCount = input.workDays.length;
-    const saturdayCount = input.saturdayDays.length;
-    const tradingSundayCount = input.tradingSundays.length;
 
     // Oblicz normę godzin dla pełnego etatu
-    const monthlyHoursNorm = calculateMonthlyHoursNorm(
-        workDaysCount,
-        saturdayCount,
-        tradingSundayCount,
-    );
+    const monthlyHoursNorm = calculateMonthlyHoursNorm(workDaysCount);
 
     return {
         year: input.year,
         month: input.month,
         monthly_hours_norm: monthlyHoursNorm,
         organization_settings: {
-            // Only fields ACTUALLY used by Python scheduler_optimizer.py:
             min_employees_per_shift:
-                input.settings.min_employees_per_shift || 1, // Used in HC7
-            enable_trading_sundays: input.tradingSundays.length > 0, // Used in HC5
+                input.settings.min_employees_per_shift || 1,
+            enable_trading_sundays: input.tradingSundays.length > 0,
             opening_hours: {
-                // Used in HC7 for continuous coverage
                 monday: {
                     open: input.settings.store_open_time
                         ? formatTime(input.settings.store_open_time)
