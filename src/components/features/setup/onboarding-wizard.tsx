@@ -213,6 +213,18 @@ export function OnboardingWizard() {
         [],
     );
 
+    const batchImportEmployees = useCallback(
+        (importedEmployees: Array<Omit<Employee, "id">>) => {
+            setEmployees(
+                importedEmployees.map((emp, index) => ({
+                    ...emp,
+                    id: String(Date.now() + index),
+                })),
+            );
+        },
+        [],
+    );
+
     // Handlers for Shift Templates
     const addShiftTemplate = useCallback(() => {
         const usedColors = shiftTemplates.map((t) => t.color);
@@ -558,6 +570,7 @@ export function OnboardingWizard() {
                         onAddEmployee={addEmployee}
                         onRemoveEmployee={removeEmployee}
                         onUpdateEmployee={updateEmployee}
+                        onBatchImport={batchImportEmployees}
                     />
                 );
             case 4:
