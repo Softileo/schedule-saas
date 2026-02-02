@@ -15,7 +15,7 @@
         "type-check": "tsc --noEmit",
         "sitemap": "next-sitemap",
         "prepare": "husky",
-        "deploy:python": "cd python-scheduler && ./deploy.sh"
+        "deploy:python": "cd python && ./deploy.sh"
     },
     "dependencies": {
         "@dnd-kit/core": "^6.3.1",

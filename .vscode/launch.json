@@ -7,7 +7,7 @@
             "request": "launch",
             "build": {
                 "docker": {
-                    "path": "python-scheduler/Dockerfile"
+                    "path": "python/Dockerfile"
                 }
             },
             "image": "schedule-saas",

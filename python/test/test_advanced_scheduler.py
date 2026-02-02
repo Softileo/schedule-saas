@@ -1193,7 +1193,7 @@ def main():
     # Sprawdź połączenie
     if not check_health():
         print("\n❌ TESTY PRZERWANE: Brak połączenia z Python Scheduler")
-        print("   Uruchom scheduler: docker-compose up python-scheduler")
+        print("   Uruchom scheduler: docker-compose up python")
         return
     
     # Uruchom testy

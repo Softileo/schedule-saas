@@ -28,7 +28,7 @@
         {
             "type": "shell",
             "label": "Start Local Python Scheduler",
-            "command": "docker-compose up -d python-scheduler",
+            "command": "docker-compose up -d python",
             "problemMatcher": [],
             "presentation": {
                 "reveal": "always",
@@ -44,7 +44,7 @@
         {
             "type": "shell",
             "label": "Deploy to Cloud Run",
-            "command": "cd python-scheduler && gcloud run deploy python-scheduler --source . --region europe-west1 --memory 1Gi --cpu 2",
+            "command": "cd python && gcloud run deploy python-scheduler --source . --region europe-west1 --memory 1Gi --cpu 2",
             "problemMatcher": []
         }
     ]

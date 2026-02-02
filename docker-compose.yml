@@ -4,7 +4,7 @@ version: "3.8"
 services:
     python-scheduler:
         build:
-            context: ./python-scheduler
+            context: ./python
             dockerfile: Dockerfile
         container_name: python-scheduler-local
         ports:
@@ -14,7 +14,7 @@ services:
             - API_KEY=schedule-saas-local-dev-2026
             - PYTHONUNBUFFERED=1
         volumes:
-            - ./python-scheduler:/app
+            - ./python:/app
             - /app/__pycache__
         command: gunicorn --bind :8080 --workers 2 --threads 4 --timeout 300 --reload app:app
         networks:

@@ -19,5 +19,5 @@ EXPOSE 8080
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 
-# Run with gunicorn
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 4 --timeout 300 app:app
+# Run with gunicorn (JSON format for proper signal handling)
+CMD ["gunicorn", "--bind", ":8080", "--workers", "1", "--threads", "4", "--timeout", "300", "app:app"]

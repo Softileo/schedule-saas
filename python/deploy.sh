@@ -29,7 +29,7 @@ echo ""
 
 # Sprawdź czy jesteśmy w dobrym folderze
 if [ ! -f "Dockerfile" ]; then
-    echo "❌ Błąd: Nie znaleziono Dockerfile. Uruchom skrypt z folderu python-scheduler/"
+    echo "❌ Błąd: Nie znaleziono Dockerfile. Uruchom skrypt z folderu python/"
     exit 1
 fi
 
