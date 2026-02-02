@@ -240,12 +240,6 @@ export async function optimizeScheduleWithPython(
     console.log(
         `Original input.settings.store_close_time: ${input.settings.store_close_time}`,
     );
-    console.log(
-        `Transformed settings.store_open_time: ${transformedInput.settings.store_open_time}`,
-    );
-    console.log(
-        `Transformed settings.store_close_time: ${transformedInput.settings.store_close_time}`,
-    );
     console.log("=" + "=".repeat(60) + "\n");
 
     // Konwertuj config z camelCase na snake_case dla Python API
@@ -440,12 +434,6 @@ export async function generateScheduleWithCPSAT(
     );
     console.log(
         `Original input.settings.store_close_time: ${input.settings.store_close_time}`,
-    );
-    console.log(
-        `CPSAT organization_settings.store_open_time: ${cpsatInput.organization_settings.store_open_time}`,
-    );
-    console.log(
-        `CPSAT organization_settings.store_close_time: ${cpsatInput.organization_settings.store_close_time}`,
     );
     console.log("=" + "=".repeat(60) + "\n");
 
