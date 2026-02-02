@@ -14,9 +14,9 @@ services:
             - API_KEY=schedule-saas-local-dev-2026
             - PYTHONUNBUFFERED=1
         volumes:
-            - ./python:/app
-            - /app/__pycache__
-        command: gunicorn --bind :8080 --workers 2 --threads 4 --timeout 300 --reload app:app
+            - ./python/app.py:/app/app.py
+            - ./python/scheduler_optimizer.py:/app/scheduler_optimizer.py
+        command: gunicorn --bind :8080 --workers 2 --threads 4 --timeout 300 app:app
         networks:
             - schedule-network
 
