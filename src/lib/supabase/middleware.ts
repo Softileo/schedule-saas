@@ -9,7 +9,7 @@ import {
 } from "@/lib/constants/routes";
 
 export async function updateSession(
-    request: NextRequest
+    request: NextRequest,
 ): Promise<NextResponse> {
     let supabaseResponse = NextResponse.next({
         request,
@@ -25,7 +25,7 @@ export async function updateSession(
                 },
                 setAll(cookiesToSet) {
                     cookiesToSet.forEach(({ name, value }) =>
-                        request.cookies.set(name, value)
+                        request.cookies.set(name, value),
                     );
 
                     supabaseResponse = NextResponse.next({
@@ -33,7 +33,7 @@ export async function updateSession(
                     });
 
                     cookiesToSet.forEach(({ name, value, options }) =>
-                        supabaseResponse.cookies.set(name, value, options)
+                        supabaseResponse.cookies.set(name, value, options),
                     );
                 },
             },
@@ -41,7 +41,7 @@ export async function updateSession(
                 detectSessionInUrl: false,
                 flowType: "pkce",
             },
-        }
+        },
     );
 
     const {
@@ -56,35 +56,61 @@ export async function updateSession(
     const pathname = request.nextUrl.pathname;
 
     // =========================
-    // 1️⃣ PUBLIC ROUTES → always allow
+    // 1️⃣ ADMIN ROUTES → check admin auth
+    // =========================
+    if (pathname.startsWith("/admin")) {
+        const adminToken = request.cookies.get("admin-auth");
+
+        // Admin login page is public
+        if (pathname === "/admin/logowanie") {
+            // If already authenticated, redirect to admin panel
+            if (adminToken?.value === "authenticated") {
+                return NextResponse.redirect(new URL("/admin", request.url));
+            }
+            return supabaseResponse;
+        }
+
+        // All other admin routes require authentication
+        if (adminToken?.value !== "authenticated") {
+            return NextResponse.redirect(
+                new URL("/admin/logowanie", request.url),
+            );
+        }
+
+        return supabaseResponse;
+    }
+
+    // =========================
+    // 2️⃣ PUBLIC ROUTES → always allow
     // =========================
     if (isPublicRoute(pathname)) {
         return supabaseResponse;
     }
 
     // =========================
-    // 2️⃣ HOME → redirect logged user
+    // 3️⃣ HOME → redirect logged user
     // =========================
     if (pathname === ROUTES.HOME && user) {
-        return NextResponse.redirect(
-            new URL(ROUTES.PANEL, request.url)
-        );
+        return NextResponse.redirect(new URL(ROUTES.PANEL, request.url));
     }
 
     // =========================
-    // 3️⃣ AUTH ROUTES
+    // 4️⃣ AUTH ROUTES → allow /logowanie for everyone
     // =========================
+    if (pathname === ROUTES.LOGOWANIE) {
+        // /logowanie is accessible by everyone (logged in or not)
+        return supabaseResponse;
+    }
+
     if (user && isAuthRoute(pathname)) {
-        return NextResponse.redirect(
-            new URL(ROUTES.PANEL, request.url)
-        );
+        return NextResponse.redirect(new URL(ROUTES.PANEL, request.url));
     }
 
     // =========================
-    // 4️⃣ PROTECTED ROUTES
+    // 5️⃣ PROTECTED ROUTES
     // =========================
-    const isProtectedPath = ORG_REQUIRED_ROUTES.some((route) =>
-        pathname === route || pathname.startsWith(`${route}/`)
+    const isProtectedPath = ORG_REQUIRED_ROUTES.some(
+        (route) => pathname === route || pathname.startsWith(`${route}/`),
     );
 
     if (!user && isProtectedPath) {
@@ -94,7 +120,7 @@ export async function updateSession(
     }
 
     // =========================
-    // 5️⃣ DEFAULT
+    // 6️⃣ DEFAULT
     // =========================
     return supabaseResponse;
 }

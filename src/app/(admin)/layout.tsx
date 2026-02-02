@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
+import AdminLogoutButton from "./admin-logout-button";
 
 export const metadata: Metadata = {
     title: "Admin Panel | Grafiki",
@@ -12,17 +13,13 @@ export default async function AdminLayout({
 }: {
     children: React.ReactNode;
 }) {
-    const supabase = await createClient();
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const cookieStore = await cookies();
+    const adminAuth = cookieStore.get("admin-auth");
 
-    if (!user) {
-        redirect("/logowanie");
+    // Check if admin is authenticated
+    if (adminAuth?.value !== "authenticated") {
+        redirect("/admin/logowanie");
     }
-
-    // TODO: Dodać sprawdzanie roli admina gdy zostanie zaimplementowana
-    // Tymczasowo wszyscy authenticated users mają dostęp
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -32,12 +29,15 @@ export default async function AdminLayout({
                         <h1 className="text-xl font-bold text-slate-900">
                             Panel Administracyjny
                         </h1>
-                        <a
-                            href="/panel"
-                            className="text-sm text-blue-600 hover:text-blue-700"
-                        >
-                            ← Powrót do panelu
-                        </a>
+                        <div className="flex items-center gap-4">
+                            <a
+                                href="/panel"
+                                className="text-sm text-blue-600 hover:text-blue-700"
+                            >
+                                ← Powrót do panelu
+                            </a>
+                            <AdminLogoutButton />
+                        </div>
                     </div>
                 </div>
             </nav>
