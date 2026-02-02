@@ -8,7 +8,8 @@
  */
 
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getUserOrganizationsWithRole } from "@/lib/core/organization/utils";
 import { ROUTES } from "@/lib/constants/routes";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
@@ -51,11 +52,69 @@ interface GetDashboardContextOptions {
  * ```
  */
 export async function getDashboardContext(
-    options: GetDashboardContextOptions = {}
+    options: GetDashboardContextOptions = {},
 ): Promise<DashboardContext> {
     const { orgSlug, requireOrg = false } = options;
 
     const supabase = await createClient();
+
+    // Sprawdź czy admin jest w trybie impersonation
+    const cookieStore = await cookies();
+    const isAdminImpersonating =
+        cookieStore.get("admin-impersonation")?.value === "true";
+    const adminImpersonationOrgId = cookieStore.get(
+        "admin-impersonation-org",
+    )?.value;
+
+    // Jeśli admin impersonuje, pobierz organizację i symuluj dostęp
+    if (isAdminImpersonating && adminImpersonationOrgId) {
+        // Użyj service client aby ominąć RLS
+        const serviceSupabase = await createServiceClient();
+        
+        // Pobierz organizację do impersonacji
+        const { data: impersonatedOrg } = await serviceSupabase
+            .from("organizations")
+            .select("id, name, slug, owner_id, created_at, updated_at")
+            .eq("id", adminImpersonationOrgId)
+            .single();
+
+        if (impersonatedOrg) {
+            // Utwórz fikcyjnego usera (nie ma znaczenia, kto jest zalogowany)
+            const fakeUser = {
+                id: impersonatedOrg.owner_id,
+            } as User;
+
+            // Pobierz profil właściciela organizacji
+            const { data: ownerProfile } = await serviceSupabase
+                .from("profiles")
+                .select(
+                    "id, full_name, onboarding_completed, avatar_url, email, created_at, updated_at, user_feedback",
+                )
+                .eq("id", impersonatedOrg.owner_id)
+                .single();
+
+            // Pobierz wszystkie organizacje właściciela
+            const organizations = await getUserOrganizationsWithRole(
+                serviceSupabase,
+                impersonatedOrg.owner_id,
+            );
+
+            // Znajdź organizację do impersonacji
+            const currentOrg =
+                organizations.find((o) => o.id === adminImpersonationOrgId) ||
+                null;
+
+            return {
+                supabase: serviceSupabase, // Zwróć service client dla dalszych operacji
+                user: fakeUser,
+                profile: ownerProfile,
+                currentOrg,
+                organizations,
+            };
+        }
+    }
+
+    // Normalne zachowanie bez impersonation
     const {
         data: { user },
     } = await supabase.auth.getUser();
@@ -69,7 +128,7 @@ export async function getDashboardContext(
     const { data: profile } = await supabase
         .from("profiles")
         .select(
-            "id, full_name, onboarding_completed, avatar_url, email, created_at, updated_at, user_feedback"
+            "id, full_name, onboarding_completed, avatar_url, email, created_at, updated_at, user_feedback",
         )
         .eq("id", user.id)
         .single();

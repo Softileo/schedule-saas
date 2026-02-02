@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Mail, Calendar, Newspaper } from "lucide-react";
+import { Mail, Calendar, Newspaper, Building2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
 export default function AdminPage() {
@@ -10,11 +10,30 @@ export default function AdminPage() {
             </h1>
 
             <div className="grid gap-6 md:grid-cols-2">
+                <Link href="/admin/organizacje">
+                    <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer border-2 border-blue-200">
+                        <div className="flex items-start gap-4">
+                            <div className="p-3 bg-blue-100 rounded-lg">
+                                <Building2 className="h-6 w-6 text-blue-600" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-semibold text-slate-900 mb-2">
+                                    Organizacje
+                                </h2>
+                                <p className="text-slate-600">
+                                    Przeglądaj i loguj się do organizacji
+                                    użytkowników w celu pomocy technicznej
+                                </p>
+                            </div>
+                        </div>
+                    </Card>
+                </Link>
+
                 <Link href="/admin/newsletter">
                     <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer">
                         <div className="flex items-start gap-4">
-                            <div className="p-3 bg-blue-100 rounded-lg">
-                                <Mail className="h-6 w-6 text-blue-600" />
+                            <div className="p-3 bg-purple-100 rounded-lg">
+                                <Mail className="h-6 w-6 text-purple-600" />
                             </div>
                             <div>
                                 <h2 className="text-xl font-semibold text-slate-900 mb-2">

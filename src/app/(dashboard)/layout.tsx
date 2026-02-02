@@ -5,6 +5,7 @@ import { MainContent } from "@/components/features/layout/main-content";
 import { UnsavedChangesProvider } from "@/lib/contexts/unsaved-changes-context";
 import { FeedbackButton } from "@/components/common/feedback";
 import { Sidebar } from "@/components/features/layout/Sidebar";
+import { AdminImpersonationBanner } from "@/components/features/admin/admin-impersonation-banner";
 
 export default async function DashboardLayout({
     children,
@@ -20,6 +21,7 @@ export default async function DashboardLayout({
 
     return (
         <UnsavedChangesProvider>
+            <AdminImpersonationBanner />
             <div className="min-h-dvh">
                 <Sidebar organizations={organizations} user={profile} />
                 <MainContent>
