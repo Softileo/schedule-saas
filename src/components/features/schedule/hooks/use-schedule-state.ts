@@ -74,11 +74,21 @@ export function useScheduleState({
         const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
 
         const supabase = createClient();
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from("employee_absences")
             .select("*")
             .in("employee_id", employeeIds)
-            .or(`start_date.lte.${endDate},end_date.gte.${startDate}`);
+            .lte("start_date", endDate)
+            .gte("end_date", startDate);
+
+        console.log("🔄 refreshAbsences called:", {
+            employeeIds: employeeIds.length,
+            startDate,
+            endDate,
+            absencesCount: data?.length || 0,
+            error,
+            data,
+        });
 
         if (data) {
             setEmployeeAbsences(data);

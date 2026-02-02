@@ -72,18 +72,23 @@ export function AddAbsenceDialog({
             setIsLoading(true);
             try {
                 const supabase = createClient();
-                const { error } = await supabase
+                const absenceData = createAbsenceData(
+                    employee.id,
+                    organizationId,
+                    formData.absenceType,
+                    formData.startDate,
+                    formData.endDate,
+                    formData.isPaid,
+                );
+
+                console.log("➕ Adding absence:", absenceData);
+
+                const { data, error } = await supabase
                     .from("employee_absences")
-                    .insert(
-                        createAbsenceData(
-                            employee.id,
-                            organizationId,
-                            formData.absenceType,
-                            formData.startDate,
-                            formData.endDate,
-                            formData.isPaid,
-                        ),
-                    );
+                    .insert(absenceData)
+                    .select();
+
+                console.log("✅ Absence added:", { data, error });
 
                 if (error) throw error;
 
@@ -98,7 +103,8 @@ export function AddAbsenceDialog({
                         : "Dodano nieobecność",
                 );
                 onOpenChange(false);
-                onAbsenceAdded();
+                console.log("🔄 Calling onAbsenceAdded()");
+                await onAbsenceAdded();
 
                 // Otwórz dialog zamiany jeśli wybrano tę opcję
                 if (andOpenSwap && onOpenSwapDialog) {

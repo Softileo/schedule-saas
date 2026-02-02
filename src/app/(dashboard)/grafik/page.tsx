@@ -120,7 +120,8 @@ export default async function SchedulePage({
                   .from("employee_absences")
                   .select("*")
                   .in("employee_id", employeeIds)
-                  .or(`start_date.lte.${endDate},end_date.gte.${startDate}`)
+                  .lte("start_date", endDate)
+                  .gte("end_date", startDate)
             : Promise.resolve({ data: [] }),
         // Pobierz przypisania szablonów
         templateIds.length > 0
@@ -142,7 +143,7 @@ export default async function SchedulePage({
             employment_type,
             custom_hours
           )
-        `
+        `,
             )
             .eq("schedule_id", schedule?.id || ""),
     ]);

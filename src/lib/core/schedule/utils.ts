@@ -28,7 +28,7 @@ function getDefaultTradingSundays(year: number): string[] {
  */
 export function isTradingSunday(
     date: Date,
-    settings: OrganizationSettings | null
+    settings: OrganizationSettings | null,
 ): boolean {
     if (!isSunday(date)) return false;
     if (!settings) return false;
@@ -90,14 +90,22 @@ export function isTradingSunday(
 export function checkEmployeeAbsence(
     employeeId: string,
     date: string,
-    absences: EmployeeAbsence[]
+    absences: EmployeeAbsence[],
 ): EmployeeAbsence | null {
-    return (
-        absences.find((absence) => {
-            if (absence.employee_id !== employeeId) return false;
-            return date >= absence.start_date && date <= absence.end_date;
-        }) || null
-    );
+    const found = absences.find((absence) => {
+        if (absence.employee_id !== employeeId) return false;
+        const isInRange =
+            date >= absence.start_date && date <= absence.end_date;
+        if (isInRange) {
+            console.log("✓ Found absence:", {
+                employeeId,
+                date,
+                absence,
+            });
+        }
+        return isInRange;
+    });
+    return found || null;
 }
 
 /**
@@ -110,18 +118,18 @@ export function checkEmployeeAbsence(
 export function canEmployeeUseTemplate(
     employeeId: string,
     templateId: string,
-    assignments: ShiftTemplateAssignment[]
+    assignments: ShiftTemplateAssignment[],
 ): boolean {
     // Check if employee has ANY template assignments
     const employeeAssignments = assignments.filter(
-        (a) => a.employee_id === employeeId
+        (a) => a.employee_id === employeeId,
     );
 
     // If employee has NO assignments - can use all templates
     if (employeeAssignments.length === 0) {
         // But also check if template has other assigned employees
         const templateAssignments = assignments.filter(
-            (a) => a.template_id === templateId
+            (a) => a.template_id === templateId,
         );
         // If template has assigned employees, and this employee is not among them - cannot use
         if (templateAssignments.length > 0) return false;
@@ -153,7 +161,7 @@ const DAY_INDEX_TO_ENUM = [
  */
 export function isTemplateAvailableOnDay(
     template: { applicable_days: string[] | number[] | null },
-    dateOrDayOfWeek: Date | string | number
+    dateOrDayOfWeek: Date | string | number,
 ): boolean {
     // Jeśli applicable_days jest null lub puste - dostępny każdego dnia
     if (!template.applicable_days || template.applicable_days.length === 0) {
@@ -175,7 +183,7 @@ export function isTemplateAvailableOnDay(
 
     // Sprawdź czy applicable_days zawiera string enum lub numer (dla kompatybilności)
     return template.applicable_days.some(
-        (day) => day === dayEnum || day === dayOfWeek
+        (day) => day === dayEnum || day === dayOfWeek,
     );
 }
 
@@ -189,7 +197,7 @@ export function isTemplateAvailableOnDay(
 export function isNonWorkingDay(
     date: Date,
     isHoliday: boolean,
-    settings: OrganizationSettings | null
+    settings: OrganizationSettings | null,
 ): boolean {
     if (isHoliday) return true;
     if (isSaturday(date)) return true; // Saturdays always as weekend
@@ -207,7 +215,7 @@ export function isNonWorkingDay(
 export function hasCoverageGap(
     shifts: { start_time: string; end_time: string }[],
     openHour: string,
-    closeHour: string
+    closeHour: string,
 ): boolean {
     if (shifts.length === 0) return true; // No shifts = no coverage
 
@@ -219,7 +227,7 @@ export function hasCoverageGap(
 
     // Sort shifts by start time
     const sortedShifts = [...shifts].sort(
-        (a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time)
+        (a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time),
     );
 
     // Check if first shift starts at or before opening time
@@ -276,7 +284,7 @@ export interface CoverageGapInfo {
 export function getCoverageGapDetails(
     shifts: { start_time: string; end_time: string }[],
     openHour: string,
-    closeHour: string
+    closeHour: string,
 ): CoverageGapInfo {
     const gaps: { from: string; to: string }[] = [];
     const openMinutes = timeToMinutes(openHour);
@@ -288,14 +296,14 @@ export function getCoverageGapDetails(
             gaps: [{ from: openHour, to: closeHour }],
             message: `Brak pracowników (${openHour.slice(
                 0,
-                5
+                5,
             )}-${closeHour.slice(0, 5)})`,
         };
     }
 
     // Sortuj zmiany według czasu rozpoczęcia
     const sortedShifts = [...shifts].sort(
-        (a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time)
+        (a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time),
     );
 
     let coveredUntil = openMinutes;
@@ -342,7 +350,7 @@ export function getCoverageGapDetails(
 
     // Twórz czytelny komunikat
     const gapStrings = gaps.map(
-        (g) => `${g.from.slice(0, 5)}-${g.to.slice(0, 5)}`
+        (g) => `${g.from.slice(0, 5)}-${g.to.slice(0, 5)}`,
     );
     const message =
         gaps.length === 1
@@ -358,7 +366,7 @@ export function getCoverageGapDetails(
  * @returns Mapa świąt
  */
 export function createHolidaysMap<T extends { date: string }>(
-    holidays: T[]
+    holidays: T[],
 ): Map<string, T> {
     const map = new Map<string, T>();
     holidays.forEach((h) => map.set(h.date, h));
@@ -372,7 +380,7 @@ export function createHolidaysMap<T extends { date: string }>(
  * @returns Mapa data -> lista zmian
  */
 export function createShiftsByDateMap<
-    T extends { date: string; start_time: string }
+    T extends { date: string; start_time: string },
 >(shifts: T[], sortByTime: boolean = false): Map<string, T[]> {
     const map = new Map<string, T[]>();
     for (const shift of shifts) {
@@ -395,9 +403,9 @@ export function createShiftsByDateMap<
  * @returns Posortowana kopia listy
  */
 export function sortShiftTemplatesByTime<T extends { start_time: string }>(
-    templates: T[]
+    templates: T[],
 ): T[] {
     return [...templates].sort((a, b) =>
-        a.start_time.localeCompare(b.start_time)
+        a.start_time.localeCompare(b.start_time),
     );
 }

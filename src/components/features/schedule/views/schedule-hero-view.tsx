@@ -120,6 +120,14 @@ ScheduleHeroViewProps) {
         date: string;
         existingShift?: LocalShift | null;
     } | null>(null);
+
+    // Debug: log absences when they change
+    useEffect(() => {
+        console.log("📊 ScheduleHeroView - employeeAbsences updated:", {
+            count: employeeAbsences.length,
+            absences: employeeAbsences,
+        });
+    }, [employeeAbsences]);
     const [selectedAbsenceData, setSelectedAbsenceData] = useState<{
         absence: EmployeeAbsence;
         employee: Employee;
