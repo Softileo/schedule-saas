@@ -70,7 +70,7 @@ export async function getDashboardContext(
     if (isAdminImpersonating && adminImpersonationOrgId) {
         // Użyj service client aby ominąć RLS
         const serviceSupabase = await createServiceClient();
-        
+
         // Pobierz organizację do impersonacji
         const { data: impersonatedOrg } = await serviceSupabase
             .from("organizations")

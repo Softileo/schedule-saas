@@ -13,7 +13,8 @@
 
 import { z } from "zod";
 import { apiSuccess, apiError, ErrorCodes } from "@/lib/api/response";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
 import { logger } from "@/lib/utils/logger";
 import {
     checkRateLimit,
@@ -347,21 +348,66 @@ export async function POST(request: Request) {
             `\n🚀 Starting schedule generation: ${month}/${year}, mode: ${mode}`,
         );
 
-        const supabase = await createClient();
+        // Sprawdź czy to admin impersonation
+        const cookieStore = await cookies();
+        const isAdminImpersonating =
+            cookieStore.get("admin-impersonation")?.value === "true";
+        const adminImpersonationOrgId = cookieStore.get(
+            "admin-impersonation-org",
+        )?.value;
 
-        // Get authenticated user
-        const {
-            data: { user },
-            error: userError,
-        } = await supabase.auth.getUser();
+        let supabase;
+        let user;
+        let organizationId = bodyOrgId;
 
-        if (userError || !user) {
-            return apiError(ErrorCodes.UNAUTHORIZED, "Brak autoryzacji", 401);
+        if (isAdminImpersonating && adminImpersonationOrgId) {
+            // Admin impersonation - użyj service client i organizacji z cookie
+            supabase = await createServiceClient();
+
+            // Pobierz właściciela organizacji
+            const { data: org } = await supabase
+                .from("organizations")
+                .select("owner_id")
+                .eq("id", adminImpersonationOrgId)
+                .single();
+
+            if (!org) {
+                return apiError(
+                    ErrorCodes.NOT_FOUND,
+                    "Organizacja nie istnieje",
+                    404,
+                );
+            }
+
+            // Ustaw fake user jako właściciela
+            user = { id: org.owner_id };
+
+            // Użyj organizacji z impersonation jeśli nie podano innej
+            if (!organizationId) {
+                organizationId = adminImpersonationOrgId;
+            }
+        } else {
+            // Normalna autoryzacja
+            supabase = await createClient();
+
+            // Get authenticated user
+            const {
+                data: { user: authUser },
+                error: userError,
+            } = await supabase.auth.getUser();
+
+            if (userError || !authUser) {
+                return apiError(
+                    ErrorCodes.UNAUTHORIZED,
+                    "Brak autoryzacji",
+                    401,
+                );
+            }
+
+            user = authUser;
         }
 
         // Determine organization ID
-        let organizationId = bodyOrgId;
-
         if (!organizationId) {
             // No org ID provided, get first membership
             const { data: membership } = await supabase
@@ -379,8 +425,9 @@ export async function POST(request: Request) {
             }
 
             organizationId = membership.organization_id;
-        } else {
+        } else if (!isAdminImpersonating) {
             // Org ID provided - verify user has access (SECURITY: prevent IDOR)
+            // Skip verification for admin impersonation
             const { data: membership } = await supabase
                 .from("organization_members")
                 .select("organization_id")
