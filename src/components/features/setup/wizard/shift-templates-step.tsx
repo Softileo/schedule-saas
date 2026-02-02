@@ -71,26 +71,26 @@ const OpeningHoursSummary = memo(function OpeningHoursSummary({
     }, [openingHours]);
 
     return (
-        <div className="bg-emerald-100 rounded-xl p-3 border border-emerald-300">
-            <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
+        <div className="bg-emerald-50 rounded-xl p-3 sm:p-4 border border-emerald-200">
+            <div className="flex items-center gap-2 text-xs text-slate-600 mb-3">
                 <Clock className="w-3.5 h-3.5" />
-                <span className="font-medium">Godziny otwarcia</span>
+                <span className="font-semibold">Godziny otwarcia</span>
                 {openingHours.sunday?.enabled && sundayMode === "custom" && (
-                    <span className="text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                    <span className="text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md text-[10px] font-medium">
                         Nd handlowe
                     </span>
                 )}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="space-y-2">
                 {groups.map((g, i) => (
                     <div
                         key={i}
-                        className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-sm"
+                        className="flex items-center justify-between gap-3 bg-white px-3 py-2 rounded-lg border border-slate-200"
                     >
-                        <span className="text-xs font-semibold text-slate-700">
+                        <span className="text-xs font-semibold text-slate-700 min-w-0 flex-shrink-0">
                             {g.days.join(", ")}
                         </span>
-                        <span className="text-xs font-mono text-slate-500">
+                        <span className="text-xs font-mono text-slate-500 whitespace-nowrap">
                             {g.hours}
                         </span>
                     </div>
@@ -189,44 +189,44 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
             )}
 
             {/* Time inputs with color indicators */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <div className="space-y-1.5">
-                    <Label className="text-xs font-medium text-slate-700 flex items-center gap-2">
+                    <Label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
                         <div
                             className="w-2 h-2 rounded-full shrink-0"
                             style={{ backgroundColor: template.color }}
                         />
-                        Godzina rozpoczęcia
+                        <span className="truncate">Rozpoczęcie</span>
                     </Label>
                     <Input
                         type="time"
                         value={template.startTime}
                         onChange={(e) => onUpdate("startTime", e.target.value)}
-                        className="h-10 text-sm"
+                        className="h-11 text-base w-3/4"
                     />
                 </div>
                 <div className="space-y-1.5">
-                    <Label className="text-xs font-medium text-slate-700 flex items-center gap-2">
+                    <Label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
                         <div
                             className="w-2 h-2 rounded-full shrink-0"
                             style={{ backgroundColor: template.color }}
                         />
-                        Godzina zakończenia
+                        <span className="truncate">Zakończenie</span>
                     </Label>
                     <Input
                         type="time"
                         value={template.endTime}
                         onChange={(e) => onUpdate("endTime", e.target.value)}
-                        className="h-10 text-sm"
+                        className="h-11 text-base w-3/4"
                     />
                 </div>
             </div>
 
             {/* Break and employees in row */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 <div className="space-y-1.5">
                     <Label className="text-xs font-medium text-slate-700">
-                        Przerwa (min)
+                        Przerwa
                     </Label>
                     <Input
                         type="number"
@@ -240,12 +240,13 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                                 parseInt(e.target.value) || 0,
                             )
                         }
-                        className="h-10 text-sm"
+                        className="h-11 text-base"
+                        placeholder="min"
                     />
                 </div>
                 <div className="space-y-1.5">
                     <Label className="text-xs font-medium text-slate-700">
-                        Min osób
+                        Min
                     </Label>
                     <Input
                         type="number"
@@ -258,12 +259,13 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                                 parseInt(e.target.value) || 0,
                             )
                         }
-                        className="h-10 text-sm"
+                        className="h-11 text-base"
+                        placeholder="0"
                     />
                 </div>
                 <div className="space-y-1.5">
                     <Label className="text-xs font-medium text-slate-700">
-                        Max osób
+                        Max
                     </Label>
                     <Input
                         type="number"
@@ -274,8 +276,8 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                             const val = parseInt(e.target.value) || 0;
                             onUpdate("maxEmployees", val === 0 ? 0 : val);
                         }}
-                        placeholder="Bez limitu"
-                        className="h-10 text-sm"
+                        placeholder="-"
+                        className="h-11 text-base"
                     />
                 </div>
             </div>
@@ -297,13 +299,13 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
             )}
 
             {/* Day selection with quick actions */}
-            <div className="space-y-2 pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between">
+            <div className="space-y-2.5 pt-2 border-t border-slate-100">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                     <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                         <CalendarDays className="w-3.5 h-3.5" />
                         Dni tygodnia
                     </Label>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-wrap">
                         <button
                             type="button"
                             onClick={selectWeekdays}
@@ -326,7 +328,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                             className="text-[10px] px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium"
                             title="Zaznacz wszystkie"
                         >
-                            Wszystkie
+                            Wszystko
                         </button>
                         <button
                             type="button"
@@ -338,7 +340,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                         </button>
                     </div>
                 </div>
-                <div className="flex gap-1.5 flex-wrap">
+                <div className="grid grid-cols-7 gap-1.5">
                     {[1, 2, 3, 4, 5, 6, 0].map((dayIndex) => {
                         const isSelected =
                             template.applicableDays.includes(dayIndex);
@@ -351,7 +353,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                                 type="button"
                                 onClick={() => onToggleDay(dayIndex)}
                                 className={cn(
-                                    "flex-1 min-w-11.25 px-3 py-2 text-xs font-semibold rounded-lg border-2 transition-all",
+                                    "px-1.5 py-2.5 sm:py-2 text-sm sm:text-xs font-semibold rounded-lg border-2 transition-all min-h-[40px] sm:min-h-0",
                                     isSelected
                                         ? isDayOpen
                                             ? "bg-slate-900 text-white border-slate-900 shadow-sm"
@@ -392,7 +394,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
             {/* Employee assignment */}
             {validEmployees.length > 0 && (
                 <div className="pt-3 border-t border-slate-100">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
                         <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                             <Users className="w-3.5 h-3.5" />
                             Przypisz pracowników{" "}
@@ -403,14 +405,14 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                         <button
                             type="button"
                             onClick={handleToggleAll}
-                            className="text-[10px] px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium"
+                            className="text-[10px] px-2.5 py-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium whitespace-nowrap"
                         >
                             {allAssigned
                                 ? "Odznacz wszystkich"
                                 : "Zaznacz wszystkich"}
                         </button>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {validEmployees
                             .sort((a, b) => {
                                 // Sort order: full, three_quarter, half, one_third, custom
@@ -444,7 +446,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                                         key={emp.id}
                                         onClick={() => onToggleEmployee(emp.id)}
                                         className={cn(
-                                            "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all border-2",
+                                            "flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium transition-all border-2 w-full",
                                             isAssigned
                                                 ? "bg-blue-50 text-blue-700 border-blue-500 shadow-sm"
                                                 : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50",
@@ -452,7 +454,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                                     >
                                         <div
                                             className={cn(
-                                                "w-6 h-6 rounded text-white text-[10px] font-bold flex items-center justify-center shrink-0",
+                                                "w-7 h-7 rounded text-white text-[10px] font-bold flex items-center justify-center shrink-0",
                                                 !isAssigned && "opacity-60",
                                             )}
                                             style={{
@@ -462,15 +464,15 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                                             {emp.firstName[0]}
                                             {emp.lastName[0]}
                                         </div>
-                                        <div className="flex items-center gap-1.5">
-                                            <span className="truncate max-w-20">
+                                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                            <span className="truncate">
                                                 {emp.firstName}{" "}
                                                 {emp.lastName[0]}.
                                             </span>
                                             {empLabel && (
                                                 <span
                                                     className={cn(
-                                                        "text-[10px] font-semibold",
+                                                        "text-[10px] font-semibold shrink-0",
                                                         isAssigned
                                                             ? "text-blue-500"
                                                             : "text-slate-400",
@@ -480,9 +482,9 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                                                 </span>
                                             )}
                                         </div>
-                                        <div className="w-3 h-3 shrink-0 flex items-center justify-center">
+                                        <div className="w-4 h-4 shrink-0 flex items-center justify-center">
                                             {isAssigned && (
-                                                <Check className="w-3 h-3 text-blue-500" />
+                                                <Check className="w-4 h-4 text-blue-500" />
                                             )}
                                         </div>
                                     </button>
@@ -507,25 +509,25 @@ export const ShiftTemplatesStep = memo(function ShiftTemplatesStep({
     onToggleEmployeeAssignment,
 }: ShiftTemplatesStepProps) {
     return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div className="text-center">
-                <h2 className="text-xl font-semibold text-slate-900">
+        <div className="w-full max-w-3xl mx-auto space-y-5 sm:space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 px-1 sm:px-2">
+            <div className="text-center px-2">
+                <h2 className="text-lg sm:text-xl font-semibold text-slate-900">
                     Zdefiniuj zmiany
                 </h2>
-                <p className="text-slate-500 mt-1 text-sm">
+                <p className="text-slate-500 mt-2 text-sm leading-relaxed">
                     Stwórz szablony zmian, wybierz dni i przypisz pracowników
                 </p>
             </div>
 
             {/* Opening hours summary */}
-            <div className="max-w-md mx-auto">
+            <div className="w-full">
                 <OpeningHoursSummary
                     openingHours={openingHours}
                     sundayMode={sundayMode}
                 />
             </div>
 
-            <div className="space-y-4 max-w-xl mx-auto">
+            <div className="space-y-3 sm:space-y-4 w-full">
                 {shiftTemplates.map((template) => (
                     <ShiftTemplateCard
                         key={template.id}
@@ -546,11 +548,11 @@ export const ShiftTemplatesStep = memo(function ShiftTemplatesStep({
                     />
                 ))}
 
-                <div className="max-w-md mx-auto">
+                <div className="w-full pt-2">
                     <Button
                         variant="outline"
                         onClick={onAddShiftTemplate}
-                        className="w-full h-10 sm:h-11  border-dashed border-slate-300 text-slate-600 hover:bg-slate-50"
+                        className="w-full h-11 border-2 border-dashed border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400 font-medium"
                     >
                         <Plus className="w-4 h-4 mr-2" />
                         Dodaj zmianę

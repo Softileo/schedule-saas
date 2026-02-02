@@ -25,40 +25,40 @@ export const WizardNavigation = memo(function WizardNavigation({
     onComplete,
 }: WizardNavigationProps) {
     return (
-        <div className="flex items-center max-w-md mx-auto justify-between mt-6 pt-4 border-t border-slate-100">
+        <div className="flex items-center justify-between gap-3 max-w-2xl mx-auto px-1">
             <Button
                 variant="ghost"
                 onClick={onBack}
                 disabled={currentStep === 1}
-                className="gap-1.5 text-slate-600 hover:text-slate-900"
+                className="gap-1.5 text-slate-600 hover:text-slate-900 h-11 px-4"
             >
                 <ChevronLeft className="w-4 h-4" />
-                <span className="hidden sm:inline">Wstecz</span>
+                <span className="hidden xs:inline">Wstecz</span>
             </Button>
 
             {currentStep < totalSteps ? (
                 <Button
                     onClick={onNext}
                     disabled={!canProceed}
-                    className="gap-1.5"
+                    className="gap-1.5 h-11 px-6 flex-1 sm:flex-none"
                 >
-                    Dalej
+                    <span>Dalej</span>
                     <ChevronRight className="w-4 h-4" />
                 </Button>
             ) : (
                 <Button
                     onClick={onComplete}
                     disabled={!canProceed || isLoading}
-                    className="gap-1.5"
+                    className="gap-1.5 h-11 px-6 flex-1 sm:flex-none"
                 >
                     {isLoading ? (
                         <>
                             <Spinner className="w-4 h-4" />
-                            Zapisuję...
+                            <span>Zapisuję...</span>
                         </>
                     ) : (
                         <>
-                            Zakończ
+                            <span>Zakończ</span>
                             <ArrowRight className="w-4 h-4" />
                         </>
                     )}

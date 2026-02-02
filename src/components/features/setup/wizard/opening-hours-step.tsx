@@ -15,7 +15,7 @@ interface OpeningHoursStepProps {
     onUpdateOpeningHours: (
         day: keyof OpeningHours,
         field: keyof DayOpeningHours,
-        value: string | boolean
+        value: string | boolean,
     ) => void;
     onSundayModeChange: (mode: "all" | "custom") => void;
 }
@@ -28,17 +28,17 @@ export const OpeningHoursStep = memo(function OpeningHoursStep({
     onSundayModeChange,
 }: OpeningHoursStepProps) {
     return (
-        <div className="w-full max-w-md mx-auto space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div className="text-center">
-                <h2 className="text-xl font-semibold text-slate-900">
+        <div className="w-full max-w-2xl mx-auto space-y-5 sm:space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 ">
+            <div className="text-center px-2">
+                <h2 className="text-lg sm:text-xl font-semibold text-slate-900">
                     Godziny otwarcia
                 </h2>
-                <p className="text-slate-500 mt-1 text-sm">
+                <p className="text-slate-500 mt-2 text-sm leading-relaxed">
                     Zaznacz dni i godziny, w których pracujecie
                 </p>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2.5 sm:space-y-2">
                 {DAYS_OF_WEEK.map((day) => {
                     const hours = openingHours[day.key as keyof OpeningHours];
                     const isSunday = day.key === "sunday";
@@ -53,7 +53,7 @@ export const OpeningHoursStep = memo(function OpeningHoursStep({
                                         : "bg-slate-100 border-slate-200",
                                     isSunday &&
                                         hours.enabled &&
-                                        "rounded-b-none border-b-0"
+                                        "rounded-b-none border-b-0",
                                 )}
                             >
                                 <Checkbox
@@ -63,7 +63,7 @@ export const OpeningHoursStep = memo(function OpeningHoursStep({
                                         onUpdateOpeningHours(
                                             day.key as keyof OpeningHours,
                                             "enabled",
-                                            checked as boolean
+                                            checked as boolean,
                                         )
                                     }
                                     className="h-5 w-5"
@@ -74,7 +74,7 @@ export const OpeningHoursStep = memo(function OpeningHoursStep({
                                         "w-20 sm:w-28 font-medium cursor-pointer text-sm",
                                         hours.enabled
                                             ? "text-slate-900"
-                                            : "text-slate-400"
+                                            : "text-slate-400",
                                     )}
                                 >
                                     {day.label}
@@ -88,7 +88,7 @@ export const OpeningHoursStep = memo(function OpeningHoursStep({
                                                 onUpdateOpeningHours(
                                                     day.key as keyof OpeningHours,
                                                     "open",
-                                                    e.target.value
+                                                    e.target.value,
                                                 )
                                             }
                                             className="w-24 sm:w-28 h-9 text-sm"
@@ -103,7 +103,7 @@ export const OpeningHoursStep = memo(function OpeningHoursStep({
                                                 onUpdateOpeningHours(
                                                     day.key as keyof OpeningHours,
                                                     "close",
-                                                    e.target.value
+                                                    e.target.value,
                                                 )
                                             }
                                             className="w-24 sm:w-28 h-9 text-sm"
@@ -128,7 +128,7 @@ export const OpeningHoursStep = memo(function OpeningHoursStep({
                                                 "px-3 py-1.5 text-xs font-medium rounded-md transition-all",
                                                 sundayMode === "all"
                                                     ? "bg-primary text-white"
-                                                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                                                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100",
                                             )}
                                         >
                                             Wszystkie
@@ -142,7 +142,7 @@ export const OpeningHoursStep = memo(function OpeningHoursStep({
                                                 "px-3 py-1.5 text-xs font-medium rounded-md transition-all",
                                                 sundayMode === "custom"
                                                     ? "bg-primary text-white"
-                                                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                                                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100",
                                             )}
                                         >
                                             Tylko handlowe

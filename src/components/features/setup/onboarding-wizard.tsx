@@ -581,30 +581,36 @@ export function OnboardingWizard() {
 
     return (
         <div className="min-h-screen">
-            <div className="py-6 px-4">
+            <div className="py-4 sm:py-6 px-3 sm:px-6">
                 <WizardProgress
                     steps={STEPS}
                     currentStep={currentStep}
                     onStepClick={setCurrentStep}
                 />
 
-                <div className="bg-transparent">
-                    <div className="py-2 sm:py-6">
+                <div className="bg-transparent mt-4 sm:mt-6">
+                    <div className="py-4 sm:py-6">
                         {renderStepContent()}
 
-                        <WizardNavigation
-                            currentStep={currentStep}
-                            totalSteps={STEPS.length}
-                            canProceed={canProceed()}
-                            isLoading={isLoading}
-                            onBack={() => setCurrentStep((prev) => prev - 1)}
-                            onNext={() => setCurrentStep((prev) => prev + 1)}
-                            onComplete={handleComplete}
-                        />
+                        <div className="mt-6 sm:mt-8">
+                            <WizardNavigation
+                                currentStep={currentStep}
+                                totalSteps={STEPS.length}
+                                canProceed={canProceed()}
+                                isLoading={isLoading}
+                                onBack={() =>
+                                    setCurrentStep((prev) => prev - 1)
+                                }
+                                onNext={() =>
+                                    setCurrentStep((prev) => prev + 1)
+                                }
+                                onComplete={handleComplete}
+                            />
+                        </div>
                     </div>
                 </div>
 
-                <p className="text-center text-xs text-green-600 mt-4">
+                <p className="text-center text-xs text-green-600 mt-4 px-4">
                     Wszystkie ustawienia możesz później zmienić w panelu
                 </p>
             </div>
