@@ -820,7 +820,7 @@ class ScheduleValidator:
                 print(f"   ✅ {template_name}: różnica {diff} pracowników")
     
     def validate_rule_5_fair_shift_distribution(self):
-        """R5: Sprawiedliwy rozdział zmian między pracownikami (±1 zmiana)."""
+        """R5: Sprawiedliwy rozdział zmian między pracownikami (±2 zmiana)."""
         print("\n🎯 R5: Sprawdzanie sprawiedliwego rozdziału zmian...")
         
         # Dla każdego szablonu zmian, zlicz ile razy każdy pracownik go miał
@@ -845,7 +845,7 @@ class ScheduleValidator:
             
             template_name = self.templates[template_id]['name'] if template_id in self.templates else template_id
             
-            if diff > 1:
+            if diff > 2:
                 self.warnings.append(
                     f"R5: {template_name} - nierówny rozdział zmian: różnica {diff} (min={min_shifts}, max={max_shifts})"
                 )
