@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-    title: "Kalkulator nadgodzin 2026 - Oblicz dodatek 50% i 100%",
+    title: "Kalkulator nadgodzin 2026 - Oblicz dodatek 50% i 100% | Calenda",
     description:
         "Bezpłatny kalkulator nadgodzin online. Oblicz ile wynosi dodatek za nadgodziny 50% i 100%. Sprawdź limity roczne i zasady rozliczania pracy w godzinach nadliczbowych.",
     keywords: [

@@ -72,7 +72,7 @@ const jsonLd = {
             },
             contactPoint: {
                 "@type": "ContactPoint",
-                telephone: "+48-123-456-789",
+                telephone: "+48-570-037-077",
                 contactType: "customer service",
                 availableLanguage: ["Polish", "English"],
             },
@@ -98,7 +98,7 @@ const jsonLd = {
             aggregateRating: {
                 "@type": "AggregateRating",
                 ratingValue: "4.9",
-                ratingCount: "500",
+                ratingCount: "378",
                 bestRating: "5",
                 worstRating: "1",
             },

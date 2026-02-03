@@ -21,10 +21,24 @@ export const metadata: Metadata = {
     title: "Kodeks Pracy - poradniki i interpretacje | Calenda",
     description:
         "Praktyczne poradniki o Kodeksie Pracy. Obowiązki pracodawcy, prawa pracownika, kontrole PIP, kary i sankcje. Aktualne interpretacje.",
+    keywords: [
+        "kodeks pracy",
+        "prawo pracy",
+        "obowiązki pracodawcy",
+        "prawa pracownika",
+        "kontrola PIP",
+        "kary PIP",
+        "przepisy pracy",
+    ],
     openGraph: {
         title: "Kodeks Pracy - poradniki i interpretacje | Calenda",
         description:
             "Praktyczne poradniki o Kodeksie Pracy. Obowiązki pracodawcy, prawa pracownika, kontrole PIP.",
+        type: "website",
+        url: "https://calenda.pl/poradniki/kodeks-pracy",
+    },
+    alternates: {
+        canonical: "https://calenda.pl/poradniki/kodeks-pracy",
     },
 };
 

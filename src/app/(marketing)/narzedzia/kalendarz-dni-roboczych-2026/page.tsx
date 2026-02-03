@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { parseISO } from "date-fns";
 import {
     SEOPageLayout,
@@ -9,7 +8,6 @@ import {
     CTABanner,
     YearCalendarGrid,
 } from "@/components/features/seo";
-import { CalendarLegend } from "@/components/common/marketing/calendar-legend";
 import { Breadcrumbs } from "@/components/features/seo/breadcrumbs";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

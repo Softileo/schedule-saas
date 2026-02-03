@@ -39,6 +39,7 @@ export async function generateMetadata({
     params,
 }: PageProps): Promise<Metadata> {
     const { slug } = await params;
+    const slugPath = slug.join("/");
     const post = await getPoradnik(slug); // Pass array directly
 
     if (!post) {
@@ -56,11 +57,15 @@ export async function generateMetadata({
             publishedTime: post.date,
             authors: [post.author],
             tags: post.tags,
+            url: `https://calenda.pl/poradniki/${slugPath}`,
         },
         twitter: {
             card: "summary_large_image",
             title: post.title,
             description: post.description,
+        },
+        alternates: {
+            canonical: `https://calenda.pl/poradniki/${slugPath}`,
         },
     };
 }
@@ -104,7 +109,7 @@ export default async function PoradnikArticlePage({ params }: PageProps) {
             post.title,
             post.description,
             `https://calenda.pl/poradniki/${slugPath}`,
-            post.date
+            post.date,
         ),
         generateBreadcrumbSchema(breadcrumbItems),
     ];
@@ -228,7 +233,7 @@ export default async function PoradnikArticlePage({ params }: PageProps) {
                                                 {relatedSlug
                                                     .replace(/-/g, " ")
                                                     .replace(/\b\w/g, (l) =>
-                                                        l.toUpperCase()
+                                                        l.toUpperCase(),
                                                     )}
                                             </span>
                                         </Card>

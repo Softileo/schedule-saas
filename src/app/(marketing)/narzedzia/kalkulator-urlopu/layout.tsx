@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-    title: "Kalkulator urlopu wypoczynkowego 2026 - Oblicz ile dni Ci przysługuje",
+    title: "Kalkulator urlopu wypoczynkowego 2026 - Oblicz ile dni Ci przysługuje | Calenda",
     description:
         "Bezpłatny kalkulator urlopu online. Oblicz ile dni urlopu wypoczynkowego Ci przysługuje. Uwzględnia staż pracy, wykształcenie, wymiar etatu i urlop proporcjonalny.",
     keywords: [

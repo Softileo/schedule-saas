@@ -45,7 +45,11 @@ export const metadata: Metadata = {
         title: "Czas Pracy - Kompletny Poradnik 2026",
         description:
             "Wszystko o czasie pracy: normy, systemy zmianowe, nadgodziny, przerwy.",
-        type: "article",
+        type: "website",
+        url: "https://calenda.pl/poradniki/czas-pracy",
+    },
+    alternates: {
+        canonical: "https://calenda.pl/poradniki/czas-pracy",
     },
 };
 

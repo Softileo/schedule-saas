@@ -36,6 +36,10 @@ export const metadata: Metadata = {
         description:
             "Kompleksowe poradniki o czasie pracy, prawie pracy i grafikach.",
         type: "website",
+        url: "https://calenda.pl/poradniki",
+    },
+    alternates: {
+        canonical: "https://calenda.pl/poradniki",
     },
 };
 
