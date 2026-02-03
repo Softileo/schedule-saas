@@ -169,9 +169,58 @@ def transform_nextjs_input(data: dict) -> dict:
     
     # Settings
     settings = input_data.get('settings', {})
+    
+    # Parsuj godziny otwarcia - obsługa per-day format z Next.js
+    opening_hours_raw = settings.get('opening_hours', {})
+    opening_hours = {}
+    
+    # Default hours (legacy fallback)
+    default_open = settings.get('store_open_time', '08:00:00')
+    default_close = settings.get('store_close_time', '20:00:00')
+    
+    # Normalizuj do HH:MM
+    if len(default_open) > 5:
+        default_open = default_open[:5]
+    if len(default_close) > 5:
+        default_close = default_close[:5]
+    
+    day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    
+    for day_name in day_names:
+        if day_name in opening_hours_raw:
+            day_config = opening_hours_raw[day_name]
+            open_time = day_config.get('open')
+            close_time = day_config.get('close')
+            
+            # Normalizuj do HH:MM
+            if open_time and len(open_time) > 5:
+                open_time = open_time[:5]
+            if close_time and len(close_time) > 5:
+                close_time = close_time[:5]
+            
+            opening_hours[day_name] = {
+                'open': open_time,
+                'close': close_time
+            }
+        else:
+            # Defaults
+            if day_name == 'sunday':
+                opening_hours[day_name] = {'open': None, 'close': None}
+            elif day_name == 'saturday':
+                opening_hours[day_name] = {
+                    'open': default_open,
+                    'close': '16:00' if default_close > '16:00' else default_close
+                }
+            else:
+                opening_hours[day_name] = {
+                    'open': default_open,
+                    'close': default_close
+                }
+    
     organization_settings = {
-        'store_open_time': settings.get('store_open_time', '08:00:00'),
-        'store_close_time': settings.get('store_close_time', '20:00:00'),
+        'store_open_time': default_open,
+        'store_close_time': default_close,
+        'opening_hours': opening_hours,  # Per-day opening hours
         'min_employees_per_shift': settings.get('min_staff_per_shift', 1),
         'enable_trading_sundays': len(input_data.get('trading_sundays', [])) > 0
     }

@@ -82,6 +82,105 @@ LABOR_CODE = {
     'FREE_SUNDAY_INTERVAL': 4,            # Art. 151^10 KP - wolna niedziela co 4 tygodnie
 }
 
+# =============================================================================
+# COVERAGE CALCULATION - Obliczanie pokrycia godzin otwarcia
+# =============================================================================
+
+# Slot czasowy (15 minut) dla analizy pokrycia
+TIME_SLOT_MINUTES = 15
+
+@dataclass
+class TimeSlot:
+    """Reprezentacja slotu czasowego do analizy pokrycia."""
+    start_minutes: int  # Minuty od północy
+    end_minutes: int
+    min_employees: int = 1
+    
+    @property
+    def duration_minutes(self) -> int:
+        return self.end_minutes - self.start_minutes
+
+
+def parse_time_to_minutes(time_str: str) -> int:
+    """
+    Konwertuje string czasu (HH:MM lub HH:MM:SS) na minuty od północy.
+    """
+    if not time_str:
+        return 0
+    parts = time_str.split(':')
+    hours = int(parts[0])
+    minutes = int(parts[1]) if len(parts) > 1 else 0
+    return hours * 60 + minutes
+
+
+def get_day_name_from_weekday(weekday: int) -> str:
+    """
+    Konwertuje numer dnia tygodnia (0=Pn, 6=Nd) na nazwę po angielsku.
+    """
+    day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    return day_names[weekday]
+
+
+def calculate_coverage_slots(
+    open_time: str,
+    close_time: str,
+    min_employees: int = 1,
+    slot_duration: int = TIME_SLOT_MINUTES
+) -> List[TimeSlot]:
+    """
+    Dzieli godziny otwarcia na sloty czasowe.
+    
+    Args:
+        open_time: Godzina otwarcia (HH:MM)
+        close_time: Godzina zamknięcia (HH:MM)
+        min_employees: Minimalna liczba pracowników na slot
+        slot_duration: Długość slotu w minutach (domyślnie 15)
+    
+    Returns:
+        Lista slotów czasowych pokrywających godziny otwarcia
+    """
+    open_minutes = parse_time_to_minutes(open_time)
+    close_minutes = parse_time_to_minutes(close_time)
+    
+    # Obsługa zmiany nocnej (zamknięcie po północy)
+    if close_minutes <= open_minutes:
+        close_minutes += 24 * 60
+    
+    slots = []
+    current = open_minutes
+    while current < close_minutes:
+        slot_end = min(current + slot_duration, close_minutes)
+        slots.append(TimeSlot(
+            start_minutes=current,
+            end_minutes=slot_end,
+            min_employees=min_employees
+        ))
+        current = slot_end
+    
+    return slots
+
+
+def does_template_cover_slot(template, slot: TimeSlot) -> bool:
+    """
+    Sprawdza czy dany szablon zmiany pokrywa slot czasowy.
+    
+    Args:
+        template: ShiftTemplate z start_time i end_time
+        slot: TimeSlot do sprawdzenia
+    
+    Returns:
+        True jeśli zmiana pokrywa cały slot
+    """
+    tmpl_start = parse_time_to_minutes(template.start_time)
+    tmpl_end = parse_time_to_minutes(template.end_time)
+    
+    # Obsługa zmiany nocnej
+    if tmpl_end <= tmpl_start:
+        tmpl_end += 24 * 60
+    
+    # Slot musi być w całości pokryty przez zmianę
+    return tmpl_start <= slot.start_minutes and tmpl_end >= slot.end_minutes
+
 
 # =============================================================================
 # DATA CLASSES - Struktury danych
@@ -330,7 +429,8 @@ class DataModel:
         
         print(f"📋 Szablony zmian: {len(self.templates)}")
         for t in self.templates:
-            print(f"   • {t.name}: {t.start_time}-{t.end_time} ({t.get_duration_minutes()} min netto)")
+            days_info = t.applicable_days if t.applicable_days else "WSZYSTKIE DNI"
+            print(f"   • {t.name}: {t.start_time}-{t.end_time} | Dni: {days_info} | Min: {t.min_employees}")
     
     def _parse_absences(self):
         """Parsuje nieobecności pracowników."""
@@ -421,14 +521,72 @@ class DataModel:
         rules = self.raw_data.get('scheduling_rules', {})
         
         self.min_employees_per_shift = org.get('min_employees_per_shift', 1)
-        self.store_open_time = org.get('store_open_time', '08:00')
-        self.store_close_time = org.get('store_close_time', '20:00')
+        
+        # Parsuj godziny otwarcia - obsługa per-day i legacy format
+        opening_hours_raw = org.get('opening_hours', {})
+        self.opening_hours: Dict[str, Dict[str, Optional[str]]] = {}
+        
+        # Default store hours (legacy fallback)
+        default_open = org.get('store_open_time', '08:00')
+        default_close = org.get('store_close_time', '20:00')
+        
+        # Normalizuj format czasu (usuń sekundy jeśli są)
+        if len(default_open) > 5:
+            default_open = default_open[:5]
+        if len(default_close) > 5:
+            default_close = default_close[:5]
+        
+        day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        
+        for day_name in day_names:
+            if day_name in opening_hours_raw:
+                day_config = opening_hours_raw[day_name]
+                open_time = day_config.get('open')
+                close_time = day_config.get('close')
+                
+                # Normalizuj format czasu
+                if open_time and len(open_time) > 5:
+                    open_time = open_time[:5]
+                if close_time and len(close_time) > 5:
+                    close_time = close_time[:5]
+                
+                self.opening_hours[day_name] = {
+                    'open': open_time,
+                    'close': close_time
+                }
+            else:
+                # Domyślne godziny dla dni roboczych, zamknięte w niedzielę
+                if day_name == 'sunday':
+                    self.opening_hours[day_name] = {'open': None, 'close': None}
+                elif day_name == 'saturday':
+                    # Sobota - krótszy dzień domyślnie
+                    self.opening_hours[day_name] = {
+                        'open': default_open,
+                        'close': '16:00' if default_close > '16:00' else default_close
+                    }
+                else:
+                    self.opening_hours[day_name] = {
+                        'open': default_open,
+                        'close': default_close
+                    }
+        
+        # Legacy compatibility
+        self.store_open_time = default_open
+        self.store_close_time = default_close
         
         self.max_consecutive_days = rules.get('max_consecutive_days', LABOR_CODE['MAX_CONSECUTIVE_DAYS'])
         self.min_daily_rest_hours = rules.get('min_daily_rest_hours', LABOR_CODE['MIN_DAILY_REST_HOURS'])
         self.max_weekly_hours = rules.get('max_weekly_work_hours', LABOR_CODE['MAX_WEEKLY_HOURS'])
         
         self.solver_time_limit = self.raw_data.get('solver_time_limit', 300)
+        
+        # Loguj godziny otwarcia
+        print(f"\n🕐 Godziny otwarcia:")
+        for day_name, hours in self.opening_hours.items():
+            if hours['open'] and hours['close']:
+                print(f"   {day_name}: {hours['open']} - {hours['close']}")
+            else:
+                print(f"   {day_name}: ZAMKNIĘTE")
     
     def _build_indices(self):
         """Buduje mapowania indeksów dla szybkiego dostępu."""
@@ -531,6 +689,16 @@ class CPSATScheduler:
         """
         print("\n🔧 Tworzenie zmiennych decyzyjnych...")
         
+        # Debug: loguj applicable_days dla każdego szablonu
+        print("   📋 Szablony i ich dni:")
+        for tmpl in self.data.templates:
+            days_info = tmpl.applicable_days if tmpl.applicable_days else "WSZYSTKIE DNI"
+            print(f"      • {tmpl.name} (ID: {tmpl.id[:8]}...): {days_info}")
+        
+        skipped_day_mismatch = 0
+        skipped_no_assignment = 0
+        templates_used = set()  # Track which templates are actually used
+        
         for emp_idx, emp in enumerate(self.data.employees):
             for day in self.data.all_days:
                 # Sprawdź czy dzień jest pracujący
@@ -545,16 +713,27 @@ class CPSATScheduler:
                     # Sprawdź przypisanie szablonu do pracownika
                     if emp.template_assignments:
                         if tmpl.id not in emp.template_assignments:
+                            skipped_no_assignment += 1
                             continue
                     
                     # Sprawdź czy szablon działa w ten dzień
                     if not self.data.can_template_be_used_on_day(tmpl, day):
+                        skipped_day_mismatch += 1
                         continue
                     
                     # Utwórz zmienną
                     var_name = f"s_{emp_idx}_{day}_{tmpl_idx}"
                     self.shifts[(emp_idx, day, tmpl_idx)] = self.model.NewBoolVar(var_name)
                     self.stats['total_variables'] += 1
+                    templates_used.add(tmpl.name)
+        
+        print(f"   ⏩ Pominięto (brak przypisania do pracownika): {skipped_no_assignment}")
+        print(f"   ⏩ Pominięto (zły dzień tygodnia): {skipped_day_mismatch}")
+        
+        # Pokaż które szablony są faktycznie używane
+        unused_templates = [t.name for t in self.data.templates if t.name not in templates_used]
+        if unused_templates:
+            print(f"   ⚠️ NIEUŻYWANE SZABLONY (brak przypisań): {unused_templates}")
         
         # Utwórz zmienne pomocnicze works_day
         for emp_idx, emp in enumerate(self.data.employees):
@@ -741,11 +920,19 @@ class CPSATScheduler:
     
     def _add_hc7_min_staffing(self):
         """
-        HC7: Minimalna obsada na zmianę.
-        Każdy szablon zmiany musi mieć min_employees pracowników w każdym dniu.
+        HC7: Minimalna obsada na zmianę (WARUNKOWA).
         
-        HARD CONSTRAINT: Musi być spełnione!
+        WAŻNE: min_employees oznacza "jeśli ta zmiana jest używana, to musi mieć
+        co najmniej X pracowników". NIE oznacza, że zmiana MUSI być używana!
+        
+        Szablony są OPCJAMI, nie wymaganiami. Pokrycie godzin otwarcia
+        jest obsługiwane przez SC7 (soft constraint).
+        
+        Logika: IF sum(assigned) >= 1 THEN sum(assigned) >= min_employees
+        Czyli: sum(assigned) == 0 OR sum(assigned) >= min_employees
         """
+        print("   → HC7: Min staffing per template (CONDITIONAL)")
+        
         for day in self.data.all_days:
             if not self.data.is_workable_day(day):
                 continue
@@ -756,8 +943,8 @@ class CPSATScheduler:
                     continue
                 
                 min_required = tmpl.min_employees
-                if min_required <= 0:
-                    continue
+                if min_required <= 1:
+                    continue  # Dla min=1 warunek jest trywialny (0 lub >=1)
                 
                 # Zbierz wszystkie zmienne dla tego szablonu w tym dniu
                 assigned_vars = [
@@ -766,10 +953,20 @@ class CPSATScheduler:
                     if (e, day, tmpl_idx) in self.shifts
                 ]
                 
-                if assigned_vars:
-                    # Minimum min_employees musi być przypisanych
-                    self.model.Add(sum(assigned_vars) >= min_required)
-                    self.stats['hard_constraints'] += 1
+                if not assigned_vars:
+                    continue
+                
+                # Zmienna pomocnicza: czy szablon jest używany w tym dniu
+                is_used = self.model.NewBoolVar(f"used_{day}_{tmpl_idx}")
+                
+                # is_used == 1 iff sum(assigned) >= 1
+                self.model.Add(sum(assigned_vars) >= 1).OnlyEnforceIf(is_used)
+                self.model.Add(sum(assigned_vars) == 0).OnlyEnforceIf(is_used.Not())
+                
+                # Jeśli używany, musi mieć min_employees
+                # sum(assigned) >= min_required gdy is_used == 1
+                self.model.Add(sum(assigned_vars) >= min_required).OnlyEnforceIf(is_used)
+                self.stats['hard_constraints'] += 1
     
     def _add_hc8_max_staffing(self):
         """
@@ -881,6 +1078,7 @@ class CPSATScheduler:
         self._add_sc4_weekend_fairness()
         self._add_sc5_daily_staffing_balance()
         self._add_sc6_fair_shift_distribution()
+        self._add_sc7_coverage_optimization()  # Nowe: optymalizacja pokrycia godzin otwarcia
         
         print(f"   ✅ Dodano {self.stats['soft_constraints']} soft constraints")
     
@@ -1198,6 +1396,123 @@ class CPSATScheduler:
             ))
             self.stats['soft_constraints'] += 1
     
+    def _add_sc7_coverage_optimization(self):
+        """
+        SC7: Optymalizacja pokrycia godzin otwarcia.
+        
+        Zamiast wymuszać konkretne szablony, analizujemy sloty czasowe
+        i nagradzamy/karamy na podstawie rzeczywistego pokrycia.
+        
+        Kluczowe zasady:
+        1. Każdy slot czasowy musi być pokryty przez min_employees
+        2. Dopuszczamy double-staffing (wielu pracowników na tym samym slocie)
+        3. Karamy brak pokrycia, nagradzamy optymalne pokrycie
+        """
+        print("   → SC7: Optymalizacja pokrycia godzin otwarcia")
+        
+        coverage_penalty_weight = 300  # Kara za brak pokrycia slotu
+        overstaffing_penalty_weight = 10  # Lekka kara za nadmiar obsady
+        
+        for day in self.data.all_days:
+            if not self.data.is_workable_day(day):
+                continue
+            
+            weekday = self.data.day_to_weekday[day]
+            day_name = get_day_name_from_weekday(weekday)
+            
+            day_hours = self.data.opening_hours.get(day_name, {})
+            open_time = day_hours.get('open')
+            close_time = day_hours.get('close')
+            
+            if not open_time or not close_time:
+                continue  # Dzień zamknięty
+            
+            # Generuj sloty dla tego dnia
+            slots = calculate_coverage_slots(
+                open_time, 
+                close_time,
+                min_employees=self.data.min_employees_per_shift,
+                slot_duration=30  # 30-minutowe sloty dla mniejszej złożoności
+            )
+            
+            if not slots:
+                continue
+            
+            # Dla każdego slotu, sprawdź które szablony go pokrywają
+            for slot_idx, slot in enumerate(slots):
+                # Znajdź szablony które pokrywają ten slot
+                covering_templates: List[Tuple[int, Any]] = []
+                
+                for tmpl_idx, tmpl in enumerate(self.data.templates):
+                    # Sprawdź czy szablon może być użyty w ten dzień
+                    if not self.data.can_template_be_used_on_day(tmpl, day):
+                        continue
+                    
+                    # Sprawdź czy szablon pokrywa slot
+                    if does_template_cover_slot(tmpl, slot):
+                        covering_templates.append((tmpl_idx, tmpl))
+                
+                if not covering_templates:
+                    # Brak szablonów pokrywających ten slot - skip
+                    # (to jest problem konfiguracji, nie optymalizacji)
+                    continue
+                
+                # Zbierz wszystkie zmienne shift które pokrywają ten slot
+                slot_coverage_vars = []
+                
+                for emp_idx in range(len(self.data.employees)):
+                    for tmpl_idx, tmpl in covering_templates:
+                        if (emp_idx, day, tmpl_idx) in self.shifts:
+                            slot_coverage_vars.append(self.shifts[(emp_idx, day, tmpl_idx)])
+                
+                if not slot_coverage_vars:
+                    continue
+                
+                # Policz ile pracowników pokrywa ten slot
+                slot_coverage = self.model.NewIntVar(
+                    0, len(slot_coverage_vars),
+                    f"slot_cov_{day}_{slot_idx}"
+                )
+                self.model.Add(slot_coverage == sum(slot_coverage_vars))
+                
+                min_required = slot.min_employees
+                
+                # Kara za niedostateczne pokrycie
+                shortage = self.model.NewIntVar(
+                    0, min_required,
+                    f"slot_short_{day}_{slot_idx}"
+                )
+                self.model.AddMaxEquality(
+                    shortage,
+                    [min_required - slot_coverage, self.model.NewConstant(0)]
+                )
+                
+                if min_required > 0:
+                    self.penalties.append((
+                        shortage,
+                        coverage_penalty_weight,
+                        f"coverage_gap_{day}_{slot.start_minutes//60}:{slot.start_minutes%60:02d}"
+                    ))
+                    self.stats['soft_constraints'] += 1
+                
+                # Lekka kara za zbyt duży nadmiar (>min+2)
+                max_ideal = min_required + 2
+                overstaffing = self.model.NewIntVar(
+                    0, len(slot_coverage_vars),
+                    f"slot_over_{day}_{slot_idx}"
+                )
+                self.model.AddMaxEquality(
+                    overstaffing,
+                    [slot_coverage - max_ideal, self.model.NewConstant(0)]
+                )
+                
+                self.penalties.append((
+                    overstaffing,
+                    overstaffing_penalty_weight,
+                    f"overstaffing_{day}_{slot.start_minutes//60}:{slot.start_minutes%60:02d}"
+                ))
+                self.stats['soft_constraints'] += 1
+    
     # =========================================================================
     # KROK 4: Budowanie funkcji celu i rozwiązywanie
     # =========================================================================
@@ -1241,10 +1556,19 @@ class CPSATScheduler:
         
         timeout = time_limit_seconds or self.data.solver_time_limit
         solver.parameters.max_time_in_seconds = timeout
-        solver.parameters.num_search_workers = 8  # Wielowątkowość
+        
+        # Zwiększona eksploracja przestrzeni rozwiązań
+        solver.parameters.num_search_workers = 16  # Więcej wątków
         solver.parameters.log_search_progress = False
         
-        print(f"\n🚀 Uruchamianie solvera (limit: {timeout}s, workers: 8)...")
+        # Strategia przeszukiwania - portfolio szuka różnymi metodami jednocześnie
+        solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH
+        
+        # Randomizacja dla lepszej eksploracji
+        solver.parameters.random_seed = int(time.time()) % 10000
+        solver.parameters.randomize_search = True
+        
+        print(f"\n🚀 Uruchamianie solvera (limit: {timeout}s, workers: 16, strategy: PORTFOLIO)...")
         
         # Rozwiąż
         status = solver.Solve(self.model)
@@ -1332,11 +1656,35 @@ class CPSATScheduler:
                     'break_minutes': tmpl.break_minutes,
                     'duration_minutes': tmpl.get_duration_minutes(),
                     'color': tmpl.color or emp.color,
+                    'applicable_days': tmpl.applicable_days,  # Dodane do weryfikacji
                 }
                 shifts.append(shift)
         
         # Sortuj po dacie i pracowniku
         shifts.sort(key=lambda x: (x['date'], x['employee_name']))
+        
+        # WALIDACJA: Sprawdź czy wszystkie zmiany są przypisane do właściwych dni
+        print("\n🔍 WALIDACJA PRZYPISAŃ:")
+        violations = []
+        for shift in shifts:
+            day = shift['day']
+            weekday = self.data.day_to_weekday[day]
+            day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+            actual_day_name = day_names[weekday]
+            
+            applicable = shift.get('applicable_days', [])
+            if applicable and actual_day_name not in applicable:
+                violations.append(
+                    f"❌ BŁĄD: {shift['date']} ({actual_day_name}) - {shift['employee_name']} - "
+                    f"szablon '{shift['template_name']}' dozwolony tylko w: {applicable}"
+                )
+        
+        if violations:
+            print(f"   ⚠️ Znaleziono {len(violations)} naruszeń:")
+            for v in violations[:10]:  # Pokaż max 10
+                print(f"      {v}")
+        else:
+            print("   ✅ Wszystkie przypisania poprawne (dni tygodnia zgadzają się z szablonami)")
         
         return shifts
     
@@ -1444,22 +1792,37 @@ class CPSATScheduler:
         
         # Sprawdź czy są jakieś możliwe zmienne
         if self.stats['total_variables'] == 0:
-            reasons.append("Brak możliwych przypisań (wszyscy mają urlopy?)")
+            reasons.append("Brak możliwych przypisań (wszyscy mają urlopy lub brak pasujących szablonów?)")
         
-        # Sprawdź proporcje
-        total_min_required = sum(
-            t.min_employees * self.data.days_in_month
-            for t in self.data.templates
+        # Sprawdź proporcje godzin
+        # Suma wymaganych godzin pracowników vs dostępne zmiennych
+        total_required_hours = sum(
+            emp.get_target_minutes(self.data.monthly_norm_minutes, len(self.data.weekdays)) / 60
+            for emp in self.data.employees
         )
-        max_possible = len(self.data.employees) * self.data.days_in_month
         
-        if total_min_required > max_possible:
+        # Średnia długość zmiany
+        avg_shift_hours = sum(t.get_duration_minutes() for t in self.data.templates) / max(len(self.data.templates), 1) / 60
+        
+        # Maksymalna liczba zmian możliwych (1 zmiana na pracownika na dzień)
+        workable_days = len([d for d in self.data.all_days if self.data.is_workable_day(d)])
+        max_shifts = len(self.data.employees) * workable_days
+        max_hours_available = max_shifts * avg_shift_hours
+        
+        if total_required_hours > max_hours_available * 1.2:  # 20% margines
             reasons.append(
-                f"Za mało pracowników: wymagane {total_min_required} zmian, "
-                f"możliwe max {max_possible}"
+                f"Niewystarczająca pojemność: wymagane ~{total_required_hours:.0f}h, "
+                f"dostępne max ~{max_hours_available:.0f}h"
             )
         
-        return reasons if reasons else ["Nieznana przyczyna - sprawdź logi"]
+        # Sprawdź zmienne shift - ile ich faktycznie jest
+        if self.stats['total_variables'] < max_shifts * 0.5:
+            reasons.append(
+                f"Bardzo mało możliwych przypisań ({self.stats['total_variables']}) - "
+                f"sprawdź przypisania szablonów do pracowników"
+            )
+        
+        return reasons if reasons else ["Nieznana przyczyna - sprawdź logi solvera"]
 
 
 # =============================================================================

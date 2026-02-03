@@ -332,7 +332,7 @@ class ScenarioGenerator:
                 'name': 'Zmiana poranna (8h)',
                 'start_time': open_time,
                 'end_time': f'{open_hour + 8:02d}:00:00',
-                'break_minutes': 30,
+                'break_minutes': 0,
                 'applicable_days': all_days,
                 'min_employees': min_employees,
                 'max_employees': max_employees,
@@ -345,7 +345,7 @@ class ScenarioGenerator:
                 'name': 'Zmiana popołudniowa (8h)',
                 'start_time': f'{mid_hour:02d}:00:00',
                 'end_time': close_time,
-                'break_minutes': 30,
+                'break_minutes': 0,
                 'applicable_days': all_days,
                 'min_employees': min_employees,
                 'max_employees': max_employees,
@@ -357,9 +357,9 @@ class ScenarioGenerator:
             templates.append({
                 'id': str(uuid.uuid4()),
                 'name': 'Zmiana dzienna (12h)',
-                'start_time': '06:00:00',
-                'end_time': '18:00:00',
-                'break_minutes': 45,
+                'start_time': '06:00',
+                'end_time': '18:00',
+                'break_minutes': 0,
                 'applicable_days': all_days,
                 'min_employees': min_employees,
                 'max_employees': max_employees,
@@ -369,8 +369,8 @@ class ScenarioGenerator:
             templates.append({
                 'id': str(uuid.uuid4()),
                 'name': 'Zmiana nocna (12h)',
-                'start_time': '18:00:00',
-                'end_time': '06:00:00',  # Następnego dnia
+                'start_time': '18:00',
+                'end_time': '06:00',  # Następnego dnia
                 'break_minutes': 45,
                 'applicable_days': all_days,
                 'min_employees': min_employees,
@@ -383,9 +383,9 @@ class ScenarioGenerator:
             templates.append({
                 'id': str(uuid.uuid4()),
                 'name': 'Zmiana poranna (8h)',
-                'start_time': '08:00:00',
-                'end_time': '16:00:00',
-                'break_minutes': 30,
+                'start_time': '08:00',
+                'end_time': '16:00',
+                'break_minutes': 0,
                 'applicable_days': all_days,
                 'min_employees': min_employees,
                 'max_employees': max_employees,
@@ -395,9 +395,9 @@ class ScenarioGenerator:
             templates.append({
                 'id': str(uuid.uuid4()),
                 'name': 'Zmiana popołudniowa (8h)',
-                'start_time': '12:00:00',
-                'end_time': '20:00:00',
-                'break_minutes': 30,
+                'start_time': '12:00',
+                'end_time': '20:00',
+                'break_minutes': 0,
                 'applicable_days': all_days,
                 'min_employees': min_employees,
                 'max_employees': max_employees,
@@ -427,10 +427,10 @@ class ScenarioGenerator:
                           num_employees: int,
                           shift_type: str = 'mixed',
                           employment_mix: Optional[Dict[str, float]] = None,
-                          open_time: str = '08:00:00',
-                          close_time: str = '20:00:00',
+                          open_time: str = '08:00',
+                          close_time: str = '20:00',
                           min_employees_per_shift: Optional[int] = 2,
-                          max_employees_per_shift: Optional[int] = 4,
+                          max_employees_per_shift: Optional[int] = 6,
                           trading_sunday_probability: float = 0.3,
                           closed_days: Optional[List[int]] = None) -> Dict:
         """
@@ -1030,10 +1030,10 @@ def test_small_shop():
         num_employees=5,
         shift_type='8h',
         employment_mix={'full': 1.0},
-        open_time='06:00:00',
-        close_time='14:00:00',
+        open_time='06:00',
+        close_time='14:00',
         min_employees_per_shift=2,
-        max_employees_per_shift=3,
+        max_employees_per_shift=4,
         trading_sunday_probability=0.0  # Bez niedziel handlowych dla prostoty
     )
     
@@ -1048,10 +1048,10 @@ def test_medium_shop():
         num_employees=12,
         shift_type='mixed',
         employment_mix={'full': 0.6, 'half': 0.3, 'three_quarter': 0.1},
-        open_time='09:00:00',
-        close_time='21:00:00',
+        open_time='09:00',
+        close_time='21:00',
         min_employees_per_shift=2,
-        max_employees_per_shift=4,
+        max_employees_per_shift=6,
         trading_sunday_probability=0.0  # Bez niedziel dla stabilności
     )
     
@@ -1066,8 +1066,8 @@ def test_large_shop():
         num_employees=20,
         shift_type='12h',
         employment_mix={'full': 0.8, 'half': 0.2},
-        open_time='06:00:00',
-        close_time='22:00:00',
+        open_time='06:00',
+        close_time='22:00',
         min_employees_per_shift=3,
         max_employees_per_shift=6,
         trading_sunday_probability=0.0  # Bez niedziel dla stabilności
@@ -1084,10 +1084,10 @@ def test_late_opening_shop():
         num_employees=8,
         shift_type='8h',
         employment_mix={'full': 0.75, 'half': 0.25},
-        open_time='10:00:00',
-        close_time='22:00:00',
+        open_time='10:00',
+        close_time='22:00',
         min_employees_per_shift=2,
-        max_employees_per_shift=3,
+        max_employees_per_shift=4,
         trading_sunday_probability=0.0
     )
     
@@ -1112,11 +1112,11 @@ def test_random_scenarios(count: int = 3) -> bool:
         
         # Losowe godziny otwarcia
         open_hours = [
-            ('06:00:00', '14:00:00'),  # Wczesny sklep - 8h
-            ('08:00:00', '16:00:00'),  # Standardowy krótki - 8h
-            ('09:00:00', '21:00:00'),  # Standardowy długi - 12h
-            ('10:00:00', '22:00:00'),  # Centrum handlowe - 12h
-            ('06:00:00', '22:00:00'),  # Supermarket - 16h
+            ('06:00', '14:00'),  # Wczesny sklep - 8h
+            ('08:00', '16:00'),  # Standardowy krótki - 8h
+            ('09:00', '21:00'),  # Standardowy długi - 12h
+            ('10:00', '22:00'),  # Centrum handlowe - 12h
+            ('06:00', '22:00'),  # Supermarket - 16h
         ]
         open_time, close_time = random.choice(open_hours)
         
