@@ -98,8 +98,10 @@ export default async function SchedulePage({
     // Second batch: queries that depend on first batch results
     const employeeIds = employees?.map((e) => e.id) || [];
     const templateIds = shiftTemplates?.map((t) => t.id) || [];
+    // Oblicz ostatni dzień miesiąca (prawidłowo dla lutego, kwietnia, etc.)
+    const lastDay = new Date(year, month, 0).getDate();
     const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-    const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
+    const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
     const [
         { data: employeePreferences },

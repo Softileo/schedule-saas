@@ -430,7 +430,15 @@ ScheduleHeroViewProps) {
             }
 
             toast.success("Dodano nieobecność");
-            onAbsenceAdded?.();
+            console.log(
+                "🏷️ handleAddAbsenceImmediately - calling onAbsenceAdded, exists:",
+                !!onAbsenceAdded,
+            );
+            if (onAbsenceAdded) {
+                await onAbsenceAdded();
+            } else {
+                console.error("❌ onAbsenceAdded is undefined!");
+            }
             setSelectedCell(null);
         },
         [employees, onRemoveShift, onAbsenceAdded],

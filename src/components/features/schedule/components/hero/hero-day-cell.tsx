@@ -1,6 +1,5 @@
 "use client";
 
-import { memo } from "react";
 import { isSunday, isSaturday } from "date-fns";
 import { Flag } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -50,7 +49,7 @@ interface HeroDayCellProps {
     onAbsenceClick?: () => void; // Callback gdy kliknięto na komórkę z nieobecnością (ma zmianę do obsadzenia)
 }
 
-export const HeroDayCell = memo(function HeroDayCell({
+export function HeroDayCell({
     day,
     width,
     shift,
@@ -232,6 +231,4 @@ export const HeroDayCell = memo(function HeroDayCell({
             </button>
         </div>
     );
-});
-
-HeroDayCell.displayName = "HeroDayCell";
+}

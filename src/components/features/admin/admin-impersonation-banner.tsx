@@ -19,6 +19,12 @@ interface ImpersonationStatus {
     };
 }
 
+// Helper to check if admin cookie exists
+function hasAdminCookie(): boolean {
+    if (typeof document === "undefined") return false;
+    return document.cookie.includes("admin-auth=authenticated");
+}
+
 export function AdminImpersonationBanner() {
     const router = useRouter();
     const [status, setStatus] = useState<ImpersonationStatus | null>(null);
@@ -26,7 +32,12 @@ export function AdminImpersonationBanner() {
     const [exiting, setExiting] = useState(false);
 
     useEffect(() => {
-        checkImpersonationStatus();
+        // Only check impersonation status if admin cookie exists
+        if (hasAdminCookie()) {
+            checkImpersonationStatus();
+        } else {
+            setLoading(false);
+        }
     }, []);
 
     async function checkImpersonationStatus() {

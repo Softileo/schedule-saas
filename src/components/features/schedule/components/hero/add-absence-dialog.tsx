@@ -97,14 +97,20 @@ export function AddAbsenceDialog({
                     onRemoveShift(existingShift.id);
                 }
 
+                // Małe opóźnienie aby baza danych mogła przetworzyć INSERT
+                await new Promise((resolve) => setTimeout(resolve, 100));
+
+                // Najpierw odśwież dane nieobecności
+                console.log("🔄 Calling onAbsenceAdded()");
+                await onAbsenceAdded();
+
+                // Potem pokaż toast i zamknij dialog
                 showToast.success(
                     existingShift
                         ? "Dodano nieobecność i usunięto zmianę"
                         : "Dodano nieobecność",
                 );
                 onOpenChange(false);
-                console.log("🔄 Calling onAbsenceAdded()");
-                await onAbsenceAdded();
 
                 // Otwórz dialog zamiany jeśli wybrano tę opcję
                 if (andOpenSwap && onOpenSwapDialog) {
