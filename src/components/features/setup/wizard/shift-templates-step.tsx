@@ -222,31 +222,11 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                 </div>
             </div>
 
-            {/* Break and employees in row */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            {/* Employees in row */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <div className="space-y-1.5">
                     <Label className="text-xs font-medium text-slate-700">
-                        Przerwa
-                    </Label>
-                    <Input
-                        type="number"
-                        min={0}
-                        max={120}
-                        step={15}
-                        value={template.breakMinutes}
-                        onChange={(e) =>
-                            onUpdate(
-                                "breakMinutes",
-                                parseInt(e.target.value) || 0,
-                            )
-                        }
-                        className="h-11 text-base"
-                        placeholder="min"
-                    />
-                </div>
-                <div className="space-y-1.5">
-                    <Label className="text-xs font-medium text-slate-700">
-                        Min
+                        Min osób
                     </Label>
                     <Input
                         type="number"
@@ -265,7 +245,7 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
                 </div>
                 <div className="space-y-1.5">
                     <Label className="text-xs font-medium text-slate-700">
-                        Max
+                        Max osób
                     </Label>
                     <Input
                         type="number"
@@ -285,14 +265,11 @@ const ShiftTemplateCard = memo(function ShiftTemplateCard({
             {/* Work hours badge */}
             {template.startTime && template.endTime && (
                 <div className="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
-                    <span className="text-xs text-slate-600">
-                        Czas pracy (z przerwami):
-                    </span>
+                    <span className="text-xs text-slate-600">Czas pracy:</span>
                     <span className="text-sm font-semibold text-slate-900">
                         {calculateWorkHours(
                             template.startTime,
                             template.endTime,
-                            template.breakMinutes,
                         )}
                     </span>
                 </div>

@@ -146,7 +146,6 @@ export function OnboardingWizard() {
             id: "1",
             startTime: "06:00",
             endTime: "14:00",
-            breakMinutes: 0,
             minEmployees: 0,
             maxEmployees: 0,
             color: TEMPLATE_COLORS[0],
@@ -234,7 +233,6 @@ export function OnboardingWizard() {
                 id: String(Date.now()),
                 startTime: "10:00",
                 endTime: "18:00",
-                breakMinutes: 0,
                 minEmployees: 0,
                 maxEmployees: 0,
                 color: getRandomColor(usedColors),
@@ -476,7 +474,7 @@ export function OnboardingWizard() {
                             start_time: template.startTime,
                             end_time: template.endTime,
                             color: template.color,
-                            break_minutes: template.breakMinutes,
+                            break_minutes: 0, // Przerwy usunięte - zawsze 0
                             min_employees: template.minEmployees || 0,
                             max_employees:
                                 template.maxEmployees &&

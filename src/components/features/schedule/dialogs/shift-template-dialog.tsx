@@ -34,7 +34,6 @@ import {
 export interface ShiftTemplateFormData {
     startTime: string;
     endTime: string;
-    breakMinutes: number;
     color: string;
     minEmployees: number;
     maxEmployees: number | null; // null = bez limitu
@@ -44,7 +43,6 @@ export interface ShiftTemplateFormData {
 export const DEFAULT_FORM_DATA: ShiftTemplateFormData = {
     startTime: DEFAULT_SHIFT_TIME.START,
     endTime: DEFAULT_SHIFT_TIME.END,
-    breakMinutes: 0,
     color: DEFAULT_EMPLOYEE_COLOR,
     minEmployees: 0,
     maxEmployees: null, // null = bez limitu
@@ -91,7 +89,6 @@ export function ShiftTemplateDialog({
                 setFormData({
                     startTime: formatTime(editingTemplate.start_time),
                     endTime: formatTime(editingTemplate.end_time),
-                    breakMinutes: editingTemplate.break_minutes ?? 0,
                     color: editingTemplate.color ?? DEFAULT_EMPLOYEE_COLOR,
                     minEmployees: editingTemplate.min_employees ?? 0,
                     maxEmployees: editingTemplate.max_employees ?? null,
@@ -126,7 +123,7 @@ export function ShiftTemplateDialog({
                 name: generatedName,
                 start_time: formData.startTime,
                 end_time: formData.endTime,
-                break_minutes: formData.breakMinutes,
+                break_minutes: 0, // Przerwy usunięte z UI, zawsze 0
                 color: formData.color,
                 min_employees: formData.minEmployees,
                 max_employees: formData.maxEmployees,
@@ -210,39 +207,11 @@ export function ShiftTemplateDialog({
                             />
                         </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <Label className="text-xs text-slate-500">
-                                Przerwa
-                            </Label>
-                            <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
-                                {[0, 15, 30, 45, 60].map((mins) => (
-                                    <button
-                                        key={mins}
-                                        type="button"
-                                        onClick={() =>
-                                            setFormData({
-                                                ...formData,
-                                                breakMinutes: mins,
-                                            })
-                                        }
-                                        className={cn(
-                                            "px-2.5 py-1 rounded-md text-xs font-medium transition-all",
-                                            formData.breakMinutes === mins
-                                                ? "bg-white text-slate-900 shadow-sm"
-                                                : "text-slate-600 hover:text-slate-900",
-                                        )}
-                                    >
-                                        {mins === 0 ? "0" : `${mins}min`}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
+                    <div className="flex items-center justify-end">
                         <div className="text-sm font-medium text-slate-900 bg-blue-50 px-2.5 py-1 rounded-md">
                             {calculateWorkHours(
                                 formData.startTime,
                                 formData.endTime,
-                                formData.breakMinutes,
                             )}
                         </div>
                     </div>

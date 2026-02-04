@@ -19,7 +19,6 @@ export interface ShiftTemplate {
     id: string;
     startTime: string;
     endTime: string;
-    breakMinutes: number;
     minEmployees: number;
     maxEmployees: number;
     color: string;

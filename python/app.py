@@ -160,7 +160,7 @@ def transform_nextjs_input(data: dict) -> dict:
             'name': tmpl.get('name'),
             'start_time': tmpl.get('start_time', '08:00') + ':00' if len(tmpl.get('start_time', '')) == 5 else tmpl.get('start_time', '08:00:00'),
             'end_time': tmpl.get('end_time', '16:00') + ':00' if len(tmpl.get('end_time', '')) == 5 else tmpl.get('end_time', '16:00:00'),
-            'break_minutes': tmpl.get('break_minutes', 0),
+            # break_minutes usunięte z algorytmu - ignorowane
             'min_employees': tmpl.get('min_employees', 1),
             'max_employees': tmpl.get('max_employees'),
             'color': tmpl.get('color'),

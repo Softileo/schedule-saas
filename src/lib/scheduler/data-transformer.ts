@@ -33,7 +33,6 @@ export interface PythonTemplate {
     name: string;
     start_time: string; // HH:MM format (no seconds)
     end_time: string; // HH:MM format (no seconds)
-    break_minutes: number;
     days_of_week: string[];
     is_weekend: boolean;
     min_employees: number;
@@ -73,7 +72,6 @@ export interface CPSATTemplate {
     name: string;
     start_time: string; // HH:MM format (no seconds)
     end_time: string; // HH:MM format (no seconds)
-    break_minutes: number;
     min_employees: number;
     max_employees: number | null;
     applicable_days?: string[] | null;
@@ -298,7 +296,6 @@ export function transformTemplateToPython(tmpl: ShiftTemplate): PythonTemplate {
         name: tmpl.name,
         start_time: formatTime(tmpl.start_time), // Always HH:MM
         end_time: formatTime(tmpl.end_time), // Always HH:MM
-        break_minutes: tmpl.break_minutes || 0,
         days_of_week: tmpl.applicable_days || [],
         is_weekend: false, // Can calculate based on applicable_days if needed
         min_employees: tmpl.min_employees || 1,
@@ -344,7 +341,6 @@ export function transformTemplateToCPSAT(tmpl: ShiftTemplate): CPSATTemplate {
         name: tmpl.name,
         start_time: formatTime(tmpl.start_time), // Always HH:MM
         end_time: formatTime(tmpl.end_time), // Always HH:MM
-        break_minutes: tmpl.break_minutes || 0,
         min_employees: tmpl.min_employees || 1,
         max_employees: tmpl.max_employees,
         applicable_days: tmpl.applicable_days,

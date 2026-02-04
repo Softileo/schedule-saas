@@ -142,26 +142,41 @@ export function minutesToTime(minutes: number): string {
 }
 
 /**
- * Oblicza czas pracy (godziny i minuty) na podstawie czasu rozpoczęcia, zakończenia i przerwy
+ * Oblicza czas pracy (godziny i minuty) na podstawie czasu rozpoczęcia i zakończenia
  * @param start - Czas rozpoczęcia w formacie HH:MM
- * @param end - Czas zakończenia w formacie HH:MM
- * @param breakMins - Długość przerwy w minutach
+ * @param end - Czas zakończenia w formacie HH:MM (obsługuje 24:00 oraz 00:00 jako koniec dnia)
  * @returns String w formacie "Xh" lub "Xh Ymin"
+ *
+ * Przykłady:
+ * - 08:00 - 16:00 = 8h
+ * - 19:00 - 07:00 = 12h (zmiana nocna)
+ * - 00:00 - 00:00 = 24h (pełna doba)
+ * - 00:00 - 24:00 = 24h (pełna doba)
  */
-export function calculateWorkHours(
-    start: string,
-    end: string,
-    breakMins: number = 0,
-): string {
+export function calculateWorkHours(start: string, end: string): string {
     const startTime = parseTime(start);
     const endTime = parseTime(end);
 
-    let totalMinutes =
-        endTime.hours * 60 +
-        endTime.minutes -
-        (startTime.hours * 60 + startTime.minutes);
-    if (totalMinutes < 0) totalMinutes += 24 * 60; // Zmiana przez północ
-    totalMinutes -= breakMins;
+    let startMins = startTime.hours * 60 + startTime.minutes;
+    let endMins = endTime.hours * 60 + endTime.minutes;
+
+    // Obsługa 24:00 jako koniec dnia (1440 minut)
+    if (endTime.hours === 24) {
+        endMins = 1440;
+    }
+
+    // Obsługa 00:00 jako koniec dnia (jeśli start też jest 00:00 lub start > 0)
+    // 00:00-00:00 = 24h, 08:00-00:00 = 16h (do północy)
+    if (endMins === 0 && startMins >= 0) {
+        endMins = 1440;
+    }
+
+    let totalMinutes = endMins - startMins;
+
+    // Zmiana przez północ (np. 19:00-07:00)
+    if (totalMinutes <= 0) {
+        totalMinutes += 24 * 60;
+    }
 
     const hours = Math.floor(totalMinutes / 60);
     const mins = totalMinutes % 60;

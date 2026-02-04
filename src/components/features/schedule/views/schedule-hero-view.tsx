@@ -297,7 +297,7 @@ ScheduleHeroViewProps) {
 
     // Przypisanie zmiany z własnymi godzinami
     const assignCustomShift = useCallback(
-        (startTime: string, endTime: string, breakMinutes: number) => {
+        (startTime: string, endTime: string) => {
             if (!selectedCell) return;
 
             const { employeeId, date } = selectedCell;
@@ -307,7 +307,7 @@ ScheduleHeroViewProps) {
                 onUpdateShift(existingShift.id, {
                     start_time: startTime,
                     end_time: endTime,
-                    break_minutes: breakMinutes,
+                    break_minutes: 0, // Przerwy usunięte - zawsze 0
                     color: null, // Brak koloru dla custom shift
                 });
             } else {
@@ -318,7 +318,7 @@ ScheduleHeroViewProps) {
                     date,
                     start_time: startTime,
                     end_time: endTime,
-                    break_minutes: breakMinutes,
+                    break_minutes: 0, // Przerwy usunięte - zawsze 0
                     notes: null,
                     color: null,
                     status: "new",
@@ -474,26 +474,14 @@ ScheduleHeroViewProps) {
             // Attempt to extract time from notes or just use default
             let startTime = "08:00";
             let endTime = "16:00";
-            let breakMinutes = 0; // Default 0
 
-            // Try parse from notes "Shift: HH:MM-HH:MM|Break:MM"
+            // Try parse from notes "Shift: HH:MM-HH:MM"
             if (absence.notes && absence.notes.startsWith("Shift: ")) {
                 const parts1 = absence.notes.split("|");
                 const timePart = parts1[0].replace("Shift: ", "").split("-");
                 if (timePart.length === 2) {
                     startTime = timePart[0];
                     endTime = timePart[1];
-                }
-                if (parts1[1] && parts1[1].startsWith("Break:")) {
-                    breakMinutes =
-                        parseInt(parts1[1].replace("Break:", ""), 10) || 0;
-                }
-            } else if (absence.notes && absence.notes.startsWith("Shift: ")) {
-                // Backward compatibility for notes without break
-                const parts = absence.notes.replace("Shift: ", "").split("-");
-                if (parts.length === 2) {
-                    startTime = parts[0];
-                    endTime = parts[1];
                 }
             }
 
@@ -512,7 +500,7 @@ ScheduleHeroViewProps) {
                 date: absence.start_date,
                 start_time: startTime,
                 end_time: endTime,
-                break_minutes: breakMinutes,
+                break_minutes: 0, // Przerwy usunięte - zawsze 0
                 notes: `Zastępstwo za: ${absentName}`,
                 color: null,
                 status: "new", // Represents a newly added shift

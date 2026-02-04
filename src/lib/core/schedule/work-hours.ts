@@ -29,7 +29,7 @@ export function calculateWorkingHours(
     year: number,
     month: number, // 1-12
     holidays: PublicHoliday[],
-    hoursPerDay: number = DEFAULT_HOURS
+    hoursPerDay: number = DEFAULT_HOURS,
 ): WorkingHoursResult {
     const startDate = startOfMonth(new Date(year, month - 1));
     const endDate = endOfMonth(new Date(year, month - 1));
@@ -76,11 +76,11 @@ export function getRequiredHours(
     month: number,
     holidays: PublicHoliday[],
     employmentType: EmploymentType,
-    customHours?: number
+    customHours?: number,
 ): number {
     const hoursPerDay = getEmploymentTypeHoursPerDay(
         employmentType,
-        customHours
+        customHours,
     );
     const result = calculateWorkingHours(year, month, holidays, hoursPerDay);
     return result.totalWorkingHours;
@@ -92,7 +92,7 @@ export function getRequiredHours(
 export async function calculateYearlyWorkingHours(
     year: number,
     employmentType: EmploymentType,
-    customHours?: number
+    customHours?: number,
 ): Promise<{
     monthly: {
         month: number;
@@ -113,7 +113,7 @@ export async function calculateYearlyWorkingHours(
             month,
             holidays,
             employmentType,
-            customHours
+            customHours,
         );
         const result = calculateWorkingHours(year, month, holidays);
 
@@ -132,15 +132,26 @@ export async function calculateYearlyWorkingHours(
 
 /**
  * Oblicza przepracowane godziny z listy zmian
+ * Obsługuje zmiany nocne przechodzące przez północ
  */
 export function calculateWorkedHours(
-    shifts: { start_time: string; end_time: string; break_minutes: number }[]
+    shifts: { start_time: string; end_time: string; break_minutes: number }[],
 ): number {
     return shifts.reduce((total, shift) => {
-        const startMinutes = timeToMinutes(shift.start_time);
-        const endMinutes = timeToMinutes(shift.end_time);
+        let startMinutes = timeToMinutes(shift.start_time);
+        let endMinutes = timeToMinutes(shift.end_time);
 
-        const workedMinutes = endMinutes - startMinutes - shift.break_minutes;
+        // Obsługa 00:00 jako end_time = koniec dnia (24h)
+        if (endMinutes === 0 && startMinutes >= 0) {
+            endMinutes = 1440; // 24 * 60
+        }
+
+        // Obsługa zmian nocnych (przez północ) - np. 19:00-07:00
+        let workedMinutes = endMinutes - startMinutes - shift.break_minutes;
+        if (workedMinutes < 0) {
+            workedMinutes += 24 * 60; // Dodaj 24h
+        }
+
         return total + workedMinutes / 60;
     }, 0);
 }
