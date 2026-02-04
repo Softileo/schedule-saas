@@ -86,7 +86,8 @@ WEIGHT_HIERARCHY = {
 }
 
 # Bufor godzin ponad normę (w minutach) - bez kary
-HOURS_BUFFER_MINUTES = 0  # 1 godzina
+# Pozwala na odchylenie +/- 8h od normy (480 minut)
+HOURS_BUFFER_MINUTES = 60  # 8 godzin
 
 # Limity Kodeksu Pracy (teraz jako soft constraints)
 LABOR_CODE = {
@@ -205,6 +206,7 @@ class Employee:
     max_hours: float
     custom_hours: Optional[float] = None
     is_active: bool = True
+    is_supervisor: bool = False  # Kierownik/opiekun musi być zawsze na zmianie
     position: str = 'Pracownik'
     color: Optional[str] = None
     template_assignments: List[str] = field(default_factory=list)
@@ -419,6 +421,7 @@ class DataModel:
                 max_hours=emp_data.get('max_hours', self.monthly_norm_hours),
                 custom_hours=emp_data.get('custom_hours'),
                 is_active=emp_data.get('is_active', True),
+                is_supervisor=emp_data.get('is_supervisor', False),
                 position=emp_data.get('position', 'Pracownik'),
                 color=emp_data.get('color'),
                 template_assignments=emp_data.get('template_assignments', []),
@@ -428,7 +431,9 @@ class DataModel:
             if emp.is_active:
                 self.employees.append(emp)
         
-        print(f"👥 Pracownicy: {len(self.employees)} aktywnych")
+        # Zlicz kierowników
+        supervisor_count = sum(1 for emp in self.employees if emp.is_supervisor)
+        print(f"👥 Pracownicy: {len(self.employees)} aktywnych ({supervisor_count} kierowników)")
     
     def _parse_templates(self):
         """Parsuje szablony zmian."""
@@ -773,12 +778,15 @@ class CPSATScheduler:
         2. Zakaz pracy w urlop (już obsłużone przez brak zmiennych)
         3. Max employees per shift
         4. Zakaz nakładania się zmian (dla zmian nocnych przechodzących przez północ)
+        5. Min 1 kierownik na każdej zmianie (jeśli są kierownicy)
         """
         print("\n🔒 Dodawanie ZASAD TWARDYCH (absolutne)...")
         
         self._add_hc1_one_shift_per_day()
         self._add_hc2_max_employees_per_shift()
         self._add_hc3_no_overlapping_shifts()
+        self._add_hc4_supervisor_per_shift()
+        self._add_hc5_min_coverage()
         
         print(f"   ✅ Dodano {self.stats['hard_constraints']} hard constraints")
     
@@ -881,6 +889,141 @@ class CPSATScheduler:
                             overlaps_blocked += 1
         
         print(f"      • Zablokowano {overlaps_blocked} par nakładających się zmian")
+    
+    def _add_hc4_supervisor_per_shift(self):
+        """
+        TWARDE: Dokładnie 1 kierownik na każdy szablon zmiany w danym dniu.
+        
+        Przykład 1: Sobota, sklep 9-16, jedna zmiana 9-16
+        → Dokładnie 1 kierownik na tej zmianie
+        
+        Przykład 2: Dzień roboczy, sklep 10-21, dwie zmiany: 10-18 i 13-21
+        → Dokładnie 1 kierownik na zmianie 10-18
+        → Dokładnie 1 kierownik na zmianie 13-21
+        (czyli 2 kierowników pracuje tego dnia, ale na różnych zmianach)
+        
+        Kierownicy (is_supervisor=True) to osoby odpowiedzialne za zmianę.
+        Constraint jest aktywny tylko jeśli są jacyś kierownicy w organizacji.
+        """
+        # Znajdź indeksy kierowników
+        supervisor_indices = [
+            idx for idx, emp in enumerate(self.data.employees)
+            if emp.is_supervisor
+        ]
+        
+        if not supervisor_indices:
+            print("   → HC4: Brak kierowników - pomijam constraint")
+            return
+        
+        # Debug: wypisz kierowników
+        for idx in supervisor_indices:
+            emp = self.data.employees[idx]
+            print(f"      🔑 Kierownik #{idx}: {emp.full_name} (id={emp.id})")
+        
+        print(f"   → HC4: Dokładnie 1 kierownik na zmianę ({len(supervisor_indices)} kierowników)")
+        
+        shifts_covered = 0
+        
+        for day in self.data.all_days:
+            if not self.data.is_workable_day(day):
+                continue
+            
+            for tmpl_idx, tmpl in enumerate(self.data.templates):
+                if not self.data.can_template_be_used_on_day(tmpl, day):
+                    continue
+                
+                # Zbierz zmiany kierowników dla tego szablonu w tym dniu
+                supervisor_shifts_for_template = []
+                for emp_idx in supervisor_indices:
+                    if (emp_idx, day, tmpl_idx) in self.shifts:
+                        supervisor_shifts_for_template.append(self.shifts[(emp_idx, day, tmpl_idx)])
+                
+                if supervisor_shifts_for_template:
+                    # Dokładnie 1 kierownik na tę zmianę
+                    self.model.Add(sum(supervisor_shifts_for_template) == 1)
+                    self.stats['hard_constraints'] += 1
+                    shifts_covered += 1
+                    
+                    # Debug dla sobót
+                    weekday = self.data.day_to_weekday[day]
+                    if weekday == 5:  # sobota
+                        print(f"      📅 Sobota dzień {day}: szablon '{tmpl.name}' - {len(supervisor_shifts_for_template)} kierowników może pracować")
+        
+        print(f"      • Wymuszono dokładnie 1 kierownika na {shifts_covered} zmian")
+    
+    def _add_hc5_min_coverage(self):
+        """
+        TWARDE: Minimum 1 pracownik w każdym slocie czasowym godzin otwarcia.
+        
+        Sklep otwarty = MUSI być minimum 1 pracownik w każdej chwili.
+        Dzielimy godziny otwarcia na sloty (co 30 min) i dla każdego slotu
+        wymagamy aby przynajmniej jedna zmiana go pokrywała.
+        
+        Przykład: Godziny 10:00-18:00, zmiany 10-16 i 11-17
+        - Slot 10:00-10:30: pokrywa zmiana 10-16
+        - Slot 11:00-11:30: pokrywają obie zmiany
+        - Slot 16:30-17:00: pokrywa zmiana 11-17
+        - Slot 17:30-18:00: ŻADNA zmiana nie pokrywa! (błąd konfiguracji)
+        """
+        print("   → HC5: Min 1 pracownik w każdym slocie godzin otwarcia")
+        
+        SLOT_DURATION = 30  # minuty
+        slots_covered = 0
+        
+        day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        
+        for day in self.data.all_days:
+            if not self.data.is_workable_day(day):
+                continue
+            
+            weekday = self.data.day_to_weekday[day]
+            day_name = day_names[weekday]
+            
+            # Pobierz godziny otwarcia dla tego dnia
+            day_hours = self.data.opening_hours.get(day_name, {})
+            open_time = day_hours.get('open')
+            close_time = day_hours.get('close')
+            
+            if not open_time or not close_time:
+                continue
+            
+            # Parsuj godziny otwarcia
+            open_minutes = parse_time_to_minutes(open_time)
+            close_minutes = parse_time_to_minutes(close_time, is_end_time=True)
+            
+            # Generuj sloty czasowe
+            current = open_minutes
+            while current < close_minutes:
+                slot_start = current
+                slot_end = min(current + SLOT_DURATION, close_minutes)
+                
+                # Znajdź wszystkie zmiany pokrywające ten slot
+                covering_shifts = []
+                
+                for tmpl_idx, tmpl in enumerate(self.data.templates):
+                    if not self.data.can_template_be_used_on_day(tmpl, day):
+                        continue
+                    
+                    tmpl_start = tmpl.get_start_minutes()
+                    tmpl_end = tmpl.get_end_minutes()
+                    
+                    # Zmiana pokrywa slot jeśli zaczyna się przed lub w momencie startu slotu
+                    # i kończy się po lub w momencie końca slotu
+                    if tmpl_start <= slot_start and tmpl_end >= slot_end:
+                        # Zbierz wszystkich pracowników mogących obsadzić tę zmianę
+                        for e in range(len(self.data.employees)):
+                            if (e, day, tmpl_idx) in self.shifts:
+                                covering_shifts.append(self.shifts[(e, day, tmpl_idx)])
+                
+                if covering_shifts:
+                    # ZAWSZE minimum 1 pracownik pokrywający ten slot
+                    self.model.Add(sum(covering_shifts) >= 1)
+                    self.stats['hard_constraints'] += 1
+                    slots_covered += 1
+                
+                current += SLOT_DURATION
+        
+        print(f"      • Wymuszono min 1 pracownika na {slots_covered} slotów czasowych")
     
     # =========================================================================
     # KROK 3: PRIORYTET NR 1 - Godziny (Funkcja Celu)
@@ -1120,18 +1263,17 @@ class CPSATScheduler:
                         # Nakładanie (rest < 0) jest HARD constraint, tu tylko soft dla rest >= 0
                         if rest >= 0 and rest < min_rest_minutes:
                             # Zmienna binarna: czy oba przypisane (naruszenie)
+                            # violation = 1 jeśli obie zmiany są przypisane
                             violation = self.model.NewBoolVar(f"rest_viol_{emp_idx}_{day}_{tmpl_idx}_{next_tmpl_idx}")
                             
-                            # violation = 1 iff obie zmiany przypisane
-                            self.model.AddBoolAnd([
-                                self.shifts[(emp_idx, day, tmpl_idx)],
-                                self.shifts[(emp_idx, next_day, next_tmpl_idx)]
-                            ]).OnlyEnforceIf(violation)
+                            shift1 = self.shifts[(emp_idx, day, tmpl_idx)]
+                            shift2 = self.shifts[(emp_idx, next_day, next_tmpl_idx)]
                             
-                            self.model.AddBoolOr([
-                                self.shifts[(emp_idx, day, tmpl_idx)].Not(),
-                                self.shifts[(emp_idx, next_day, next_tmpl_idx)].Not()
-                            ]).OnlyEnforceIf(violation.Not())
+                            # violation >= shift1 + shift2 - 1
+                            # Jeśli obie = 1, to violation >= 1, czyli violation = 1
+                            # Jeśli co najwyżej jedna = 1, to violation >= 0, może być 0 lub 1
+                            # Solver będzie chciał minimalizować, więc wybierze 0
+                            self.model.Add(violation >= shift1 + shift2 - 1)
                             
                             self.objective_level3.append((
                                 violation,
@@ -1162,14 +1304,16 @@ class CPSATScheduler:
                         work_vars.append(self.works_day[(emp_idx, day)])
                 
                 if len(work_vars) == window_size:
-                    # Zmienna: czy wszystkie 7 dni pracujące
-                    all_working = self.model.NewBoolVar(f"consec_{emp_idx}_{start_day}")
-                    
-                    self.model.Add(sum(work_vars) == window_size).OnlyEnforceIf(all_working)
-                    self.model.Add(sum(work_vars) < window_size).OnlyEnforceIf(all_working.Not())
+                    # Zmienna pomocnicza dla przekroczenia
+                    # excess = 1 jeśli suma >= 7 (pracuje wszystkie dni w oknie)
+                    excess = self.model.NewIntVar(0, 1, f"consec_excess_{emp_idx}_{start_day}")
+                    # excess >= sum - 6, czyli jeśli sum >= 7, excess >= 1
+                    diff = self.model.NewIntVar(-window_size, 1, f"consec_diff_{emp_idx}_{start_day}")
+                    self.model.Add(diff == sum(work_vars) - (window_size - 1))
+                    self.model.AddMaxEquality(excess, [diff, 0])
                     
                     self.objective_level3.append((
-                        all_working,
+                        excess,
                         WEIGHT_HIERARCHY['CONSECUTIVE_DAYS_VIOLATION'],
                         f"consecutive_{emp_idx}_{start_day}"
                     ))
@@ -1182,9 +1326,14 @@ class CPSATScheduler:
         """
         SOFT: Max 48h pracy tygodniowo.
         Za każdą godzinę >48: 10,000 pkt.
+        
+        Używamy AddMaxEquality z zerem
         """
         max_weekly_minutes = self.data.max_weekly_hours * 60
         weeks_checked = 0
+        
+        # Tworzymy zero raz
+        zero_var = self.model.NewIntVar(0, 0, "zero")
         
         for emp_idx in range(len(self.data.employees)):
             weeks: Dict[int, List[int]] = defaultdict(list)
@@ -1211,19 +1360,15 @@ class CPSATScheduler:
                 week_minutes = self.model.NewIntVar(0, max_possible_week, f"week_min_{emp_idx}_{week_num}")
                 self.model.Add(week_minutes == sum(week_minutes_terms))
                 
-                # Przekroczenie: max(0, week_minutes - max_weekly_minutes)
+                # Przekroczenie: overtime >= week_minutes - max_weekly_minutes oraz overtime >= 0
                 overtime = self.model.NewIntVar(0, max_possible_week, f"overtime_{emp_idx}_{week_num}")
-                diff = self.model.NewIntVar(-max_possible_week, max_possible_week, f"ot_diff_{emp_idx}_{week_num}")
-                self.model.Add(diff == week_minutes - max_weekly_minutes)
-                self.model.AddMaxEquality(overtime, [diff, 0])
+                self.model.Add(overtime >= week_minutes - max_weekly_minutes)
+                self.model.Add(overtime >= 0)
                 
-                # Konwertuj minuty na godziny (zaokrąglenie w górę co 60 minut)
-                overtime_hours = self.model.NewIntVar(0, max_possible_week // 60 + 1, f"ot_hrs_{emp_idx}_{week_num}")
-                self.model.AddDivisionEquality(overtime_hours, overtime, 60)
-                
+                # Karamy za minuty przekroczenia (nie godziny - prostsze)
                 self.objective_level3.append((
-                    overtime_hours,
-                    WEIGHT_HIERARCHY['MAX_WEEKLY_HOURS_VIOLATION'],
+                    overtime,
+                    WEIGHT_HIERARCHY['MAX_WEEKLY_HOURS_VIOLATION'] // 60,  # Przeliczone na minuty
                     f"weekly_48h_{emp_idx}_{week_num}"
                 ))
                 weeks_checked += 1
@@ -1254,13 +1399,15 @@ class CPSATScheduler:
                         work_vars.append(self.works_day[(emp_idx, day)])
                 
                 if len(work_vars) == 7:
-                    # all_7_days = 1 jeśli pracuje wszystkie 7 dni
-                    all_7_days = self.model.NewBoolVar(f"no_rest_{emp_idx}_{week_num}")
-                    self.model.Add(sum(work_vars) == 7).OnlyEnforceIf(all_7_days)
-                    self.model.Add(sum(work_vars) < 7).OnlyEnforceIf(all_7_days.Not())
+                    # all_7_days = 1 jeśli pracuje wszystkie 7 dni (brak dnia wolnego)
+                    # Używamy: excess >= sum - 6
+                    excess = self.model.NewIntVar(0, 1, f"no_rest_{emp_idx}_{week_num}")
+                    diff = self.model.NewIntVar(-7, 1, f"rest_diff_{emp_idx}_{week_num}")
+                    self.model.Add(diff == sum(work_vars) - 6)
+                    self.model.AddMaxEquality(excess, [diff, 0])
                     
                     self.objective_level3.append((
-                        all_7_days,
+                        excess,
                         WEIGHT_HIERARCHY['WEEKLY_REST_VIOLATION'],
                         f"weekly_rest_{emp_idx}_{week_num}"
                     ))
@@ -1375,6 +1522,50 @@ class CPSATScheduler:
             self.stats['soft_constraints'] += 1
         
         print(f"   → Sprawiedliwość weekendowa: aktywne")
+        
+        # ===== Dodatkowa sprawiedliwość dla kierowników =====
+        supervisor_indices = [
+            idx for idx, emp in enumerate(self.data.employees)
+            if emp.is_supervisor
+        ]
+        
+        if len(supervisor_indices) >= 2 and weekend_days:
+            supervisor_weekend_counts = []
+            
+            for emp_idx in supervisor_indices:
+                count_var = self.model.NewIntVar(0, len(weekend_days), f"sup_wknd_cnt_{emp_idx}")
+                
+                weekend_work_vars = []
+                for day in weekend_days:
+                    if (emp_idx, day) in self.works_day:
+                        weekend_work_vars.append(self.works_day[(emp_idx, day)])
+                
+                if weekend_work_vars:
+                    self.model.Add(count_var == sum(weekend_work_vars))
+                else:
+                    self.model.Add(count_var == 0)
+                
+                supervisor_weekend_counts.append(count_var)
+            
+            # Różnica między kierownikami w liczbie weekendów powinna być max 1
+            max_sup_wknd = self.model.NewIntVar(0, len(weekend_days), "max_sup_wknd")
+            min_sup_wknd = self.model.NewIntVar(0, len(weekend_days), "min_sup_wknd")
+            
+            self.model.AddMaxEquality(max_sup_wknd, supervisor_weekend_counts)
+            self.model.AddMinEquality(min_sup_wknd, supervisor_weekend_counts)
+            
+            sup_wknd_diff = self.model.NewIntVar(0, len(weekend_days), "sup_wknd_diff")
+            self.model.Add(sup_wknd_diff == max_sup_wknd - min_sup_wknd)
+            
+            # Wyższa kara dla kierowników - sprawiedliwość weekendowa jest ważniejsza
+            self.objective_level4.append((
+                sup_wknd_diff,
+                WEIGHT_HIERARCHY['WEEKEND_FAIRNESS_PENALTY'] * 10,  # 10x ważniejsze
+                "supervisor_weekend_fairness"
+            ))
+            self.stats['soft_constraints'] += 1
+            
+            print(f"   → Sprawiedliwość weekendowa kierowników: aktywne ({len(supervisor_indices)} kierowników)")
     
     def _add_shift_distribution_fairness(self):
         """Sprawiedliwy podział zmian tego samego typu."""

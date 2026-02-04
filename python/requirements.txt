@@ -5,3 +5,4 @@ python-dotenv==1.0.0
 requests==2.31.0
 ortools==9.8.3296
 numpy==1.26.3
+pytest==8.0.0

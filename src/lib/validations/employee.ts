@@ -19,6 +19,7 @@ export const employeeSchema = z.object({
         .max(12, "Maksymalna liczba godzin to 12")
         .optional()
         .nullable(),
+    isSupervisor: z.boolean().optional().default(false),
 });
 
 export const employeeUpdateSchema = employeeSchema.partial();

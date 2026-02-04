@@ -1,9 +1,15 @@
 "use client";
 
-import { UseFormRegister, FieldErrors, UseFormSetValue } from "react-hook-form";
+import {
+    UseFormRegister,
+    FieldErrors,
+    UseFormSetValue,
+    UseFormWatch,
+} from "react-hook-form";
 import { EmployeeInput } from "@/lib/validations/employee";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmailInput } from "@/components/common/form/email-input";
 import {
     Select,
@@ -21,6 +27,7 @@ interface EmployeeFormFieldsProps {
     register: UseFormRegister<EmployeeInput>;
     errors: FieldErrors<EmployeeInput>;
     setValue: UseFormSetValue<EmployeeInput>;
+    watch: UseFormWatch<EmployeeInput>;
     employmentType: EmploymentType;
     isLoading: boolean;
     showPlaceholders?: boolean;
@@ -34,10 +41,13 @@ export function EmployeeFormFields({
     register,
     errors,
     setValue,
+    watch,
     employmentType,
     isLoading,
     showPlaceholders = false,
 }: EmployeeFormFieldsProps) {
+    const isSupervisor = watch("isSupervisor") ?? false;
+
     return (
         <>
             <div className="grid grid-cols-2 gap-4">
@@ -139,6 +149,28 @@ export function EmployeeFormFields({
                     )}
                 </div>
             )}
+
+            <div className="flex items-center space-x-3 pt-2">
+                <Checkbox
+                    id="isSupervisor"
+                    checked={isSupervisor}
+                    onCheckedChange={(checked) =>
+                        setValue("isSupervisor", checked === true)
+                    }
+                    disabled={isLoading}
+                />
+                <div className="space-y-0.5">
+                    <Label
+                        htmlFor="isSupervisor"
+                        className="text-sm font-medium cursor-pointer"
+                    >
+                        Kierownik / Opiekun zmiany
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                        Zawsze musi być co najmniej jeden kierownik na zmianie
+                    </p>
+                </div>
+            </div>
         </>
     );
 }

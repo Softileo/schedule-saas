@@ -154,6 +154,7 @@ CREATE TABLE employees (
     custom_hours NUMERIC(5,2),
     color TEXT,
     is_active BOOLEAN DEFAULT true,
+    is_supervisor BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

@@ -13,6 +13,7 @@ export interface PythonEmployee {
     weekly_hours: number;
     max_hours: number;
     custom_monthly_hours: number | null;
+    is_supervisor?: boolean; // Kierownik/opiekun
     preferences: {
         preferred_days: number[];
         avoided_days: number[];
@@ -63,6 +64,7 @@ export interface CPSATEmployee {
     max_hours: number; // CRITICAL: Used in SC1 (employment type objective) and HC10 (max monthly hours)
     custom_hours?: number | null;
     is_active: boolean;
+    is_supervisor?: boolean; // Supervisor/manager must be present on each shift
     // Note: position removed - SC3 (manager presence) disabled, treats all employees equally
     // Note: color removed - UI only, not needed for calculations
 }
@@ -268,6 +270,7 @@ export function transformEmployeeToPython(
         weekly_hours: weeklyHours,
         max_hours: maxHours,
         custom_monthly_hours: customMonthlyHours,
+        is_supervisor: emp.is_supervisor === true,
         preferences: emp.preferences
             ? {
                   preferred_days: emp.preferences.preferred_days || [],
@@ -327,6 +330,7 @@ export function transformEmployeeToCPSAT(
         max_hours: maxHours,
         custom_hours: emp.custom_hours,
         is_active: emp.is_active !== false,
+        is_supervisor: emp.is_supervisor === true,
         // position omitted - SC3 disabled, all employees treated equally
         // color omitted - UI only
     };

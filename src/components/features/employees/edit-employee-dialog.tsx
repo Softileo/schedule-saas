@@ -38,7 +38,7 @@ export function EditEmployeeDialog({
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
     const [selectedColor, setSelectedColor] = useState(
-        employee.color || DEFAULT_EMPLOYEE_COLOR
+        employee.color || DEFAULT_EMPLOYEE_COLOR,
     );
 
     const {
@@ -56,6 +56,7 @@ export function EditEmployeeDialog({
             phone: employee.phone || "",
             employmentType: employee.employment_type ?? "full",
             customHours: employee.custom_hours ?? undefined,
+            isSupervisor: employee.is_supervisor ?? false,
         },
     });
 
@@ -80,6 +81,7 @@ export function EditEmployeeDialog({
                             ? data.customHours
                             : null,
                     color: selectedColor,
+                    is_supervisor: data.isSupervisor ?? false,
                     updated_at: new Date().toISOString(),
                 })
                 .eq("id", employee.id);
@@ -104,7 +106,7 @@ export function EditEmployeeDialog({
             onOpenChange={onOpenChange}
             title="Edytuj pracownika"
             description={`Zmień dane pracownika ${getEmployeeFullName(
-                employee
+                employee,
             )}`}
             maxWidth="lg"
             onSubmit={handleSubmit(onSubmit)}
@@ -113,6 +115,7 @@ export function EditEmployeeDialog({
                 register={register}
                 errors={errors}
                 setValue={setValue}
+                watch={watch}
                 employmentType={employmentType}
                 isLoading={isLoading}
             />
@@ -140,7 +143,7 @@ export function EditEmployeeDialog({
                                     "w-7 h-7 rounded-full transition-all hover:scale-110",
                                     selectedColor === color
                                         ? "ring-2 ring-offset-2 ring-primary"
-                                        : "hover:ring-2 hover:ring-offset-1 hover:ring-muted-foreground/30"
+                                        : "hover:ring-2 hover:ring-offset-1 hover:ring-muted-foreground/30",
                                 )}
                                 style={{ backgroundColor: color }}
                                 title={color}

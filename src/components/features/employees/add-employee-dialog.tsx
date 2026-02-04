@@ -50,6 +50,7 @@ export function AddEmployeeDialog({
         resolver: zodResolver(employeeSchema),
         defaultValues: {
             employmentType: "full",
+            isSupervisor: false,
         },
     });
 
@@ -74,10 +75,11 @@ export function AddEmployeeDialog({
                 employment_type: data.employmentType,
                 custom_hours:
                     data.employmentType === "custom"
-                        ? data.customHours ?? null
+                        ? (data.customHours ?? null)
                         : null,
                 color: uniqueColor,
                 is_active: true,
+                is_supervisor: data.isSupervisor ?? false,
                 position: null,
             });
 
@@ -117,6 +119,7 @@ export function AddEmployeeDialog({
                         register={register}
                         errors={errors}
                         setValue={setValue}
+                        watch={watch}
                         employmentType={employmentType}
                         isLoading={isLoading}
                         showPlaceholders
