@@ -65,20 +65,20 @@ EMPLOYMENT_MULTIPLIERS: Dict[str, float] = {
 WEIGHT_HIERARCHY = {
     # POZIOM 1: KRYTYCZNY - Godziny (10,000,000 pkt/min)
     # Kara za odchylenie od okna [Norma, Norma+480min]
-    'HOURS_UNDER_TARGET_PER_MINUTE': 10_000_000,   # Poniżej normy
-    'HOURS_OVER_BUFFER_PER_MINUTE': 10_000_000,    # Powyżej Norma+8h
+    'HOURS_UNDER_TARGET_PER_MINUTE': 20_000_000,   # Poniżej normy
+    'HOURS_OVER_BUFFER_PER_MINUTE': 10_000_000,    # Powyżej Norma
     
     # POZIOM 2: COVERAGE - Obsada (100,000 pkt/os)
     'COVERAGE_SLACK_PER_PERSON': 100_000,          # Brak pracownika na zmianie
     
     # POZIOM 3: KODEKS PRACY - Miękkie (10,000 pkt)
     'DAILY_REST_VIOLATION': 10_000,                # Naruszenie 11h odpoczynku
-    'WEEKLY_REST_VIOLATION': 10_000,               # Naruszenie 35h odpoczynku
-    'CONSECUTIVE_DAYS_VIOLATION': 10_000,          # >6 dni z rzędu
-    'MAX_WEEKLY_HOURS_VIOLATION': 10_000,          # >48h/tydzień
+    'WEEKLY_REST_VIOLATION': 100,               # Naruszenie 35h odpoczynku
+    'CONSECUTIVE_DAYS_VIOLATION': 200,          # >6 dni z rzędu
+    'MAX_WEEKLY_HOURS_VIOLATION': 100,          # >48h/tydzień
     
     # POZIOM 4: PREFERENCJE I SPRAWIEDLIWOŚĆ (100 pkt)
-    'PREFERENCE_MATCH_BONUS': 100,                 # Bonus za zgodność
+    'PREFERENCE_MATCH_BONUS': 200,                 # Bonus za zgodność
     'AVOIDED_DAY_PENALTY': 100,                    # Kara za niechciany dzień
     'WEEKEND_FAIRNESS_PENALTY': 100,               # Sprawiedliwe weekendy
     'SHIFT_DISTRIBUTION_PENALTY': 100,             # Równy rozkład zmian
