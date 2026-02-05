@@ -54,6 +54,16 @@ export interface PythonInput {
     saturday_days: string[];
     trading_sundays: string[];
     template_assignments_map: Record<string, string[]>;
+    organization_settings?: {
+        min_employees_per_shift?: number;
+        enable_trading_sundays?: boolean;
+        store_open_time?: string;
+        store_close_time?: string;
+        opening_hours?: Record<
+            string,
+            { open: string | null; close: string | null }
+        >;
+    };
 }
 
 export interface CPSATEmployee {
@@ -369,6 +379,50 @@ export function transformInputForPython(input: SchedulerInput): PythonInput {
     // Oblicz normę godzin dla pełnego etatu
     const monthlyHoursNorm = calculateMonthlyHoursNorm(workDaysCount);
 
+    // Parsuj opening_hours z JSON jeśli dostępne
+    const openingHoursFromSettings =
+        typeof input.settings.opening_hours === "string"
+            ? JSON.parse(input.settings.opening_hours)
+            : input.settings.opening_hours;
+
+    // Helper function dla pojedynczego dnia
+    const getDayHours = (
+        dayName: string,
+        defaultOpen = "08:00",
+        defaultClose = "20:00",
+    ) => {
+        // Jeśli mamy opening_hours, użyj ich
+        if (
+            openingHoursFromSettings &&
+            typeof openingHoursFromSettings === "object"
+        ) {
+            const dayHours = openingHoursFromSettings[dayName];
+            if (dayHours && typeof dayHours === "object") {
+                // Sprawdź czy dzień jest włączony (enabled)
+                if ("enabled" in dayHours && !dayHours.enabled) {
+                    return { open: null, close: null }; // Zamknięte
+                }
+                // Jeśli są godziny otwarcia, użyj ich
+                if (dayHours.open && dayHours.close) {
+                    return {
+                        open: formatTime(dayHours.open),
+                        close: formatTime(dayHours.close),
+                    };
+                }
+            }
+        }
+
+        // Fallback do store_open_time/store_close_time
+        return {
+            open: input.settings.store_open_time
+                ? formatTime(input.settings.store_open_time)
+                : defaultOpen,
+            close: input.settings.store_close_time
+                ? formatTime(input.settings.store_close_time)
+                : defaultClose,
+        };
+    };
+
     return {
         year: input.year,
         month: input.month,
@@ -387,6 +441,26 @@ export function transformInputForPython(input: SchedulerInput): PythonInput {
         template_assignments_map: input.templateAssignmentsMap
             ? Object.fromEntries(input.templateAssignmentsMap)
             : {},
+        organization_settings: {
+            min_employees_per_shift:
+                input.settings.min_employees_per_shift || 1,
+            enable_trading_sundays: input.tradingSundays.length > 0,
+            store_open_time: input.settings.store_open_time
+                ? formatTime(input.settings.store_open_time)
+                : "08:00",
+            store_close_time: input.settings.store_close_time
+                ? formatTime(input.settings.store_close_time)
+                : "20:00",
+            opening_hours: {
+                monday: getDayHours("monday"),
+                tuesday: getDayHours("tuesday"),
+                wednesday: getDayHours("wednesday"),
+                thursday: getDayHours("thursday"),
+                friday: getDayHours("friday"),
+                saturday: getDayHours("saturday", "08:00", "16:00"),
+                sunday: { open: null, close: null },
+            },
+        },
     };
 }
 
@@ -399,6 +473,50 @@ export function transformInputForCPSAT(input: SchedulerInput): CPSATInput {
     // Oblicz normę godzin dla pełnego etatu
     const monthlyHoursNorm = calculateMonthlyHoursNorm(workDaysCount);
 
+    // Parsuj opening_hours z JSON jeśli dostępne
+    const openingHoursFromSettings =
+        typeof input.settings.opening_hours === "string"
+            ? JSON.parse(input.settings.opening_hours)
+            : input.settings.opening_hours;
+
+    // Helper function dla pojedynczego dnia
+    const getDayHours = (
+        dayName: string,
+        defaultOpen = "08:00",
+        defaultClose = "20:00",
+    ) => {
+        // Jeśli mamy opening_hours, użyj ich
+        if (
+            openingHoursFromSettings &&
+            typeof openingHoursFromSettings === "object"
+        ) {
+            const dayHours = openingHoursFromSettings[dayName];
+            if (dayHours && typeof dayHours === "object") {
+                // Sprawdź czy dzień jest włączony (enabled)
+                if ("enabled" in dayHours && !dayHours.enabled) {
+                    return { open: null, close: null }; // Zamknięte
+                }
+                // Jeśli są godziny otwarcia, użyj ich
+                if (dayHours.open && dayHours.close) {
+                    return {
+                        open: formatTime(dayHours.open),
+                        close: formatTime(dayHours.close),
+                    };
+                }
+            }
+        }
+
+        // Fallback do store_open_time/store_close_time
+        return {
+            open: input.settings.store_open_time
+                ? formatTime(input.settings.store_open_time)
+                : defaultOpen,
+            close: input.settings.store_close_time
+                ? formatTime(input.settings.store_close_time)
+                : defaultClose,
+        };
+    };
+
     return {
         year: input.year,
         month: input.month,
@@ -408,55 +526,13 @@ export function transformInputForCPSAT(input: SchedulerInput): CPSATInput {
                 input.settings.min_employees_per_shift || 1,
             enable_trading_sundays: input.tradingSundays.length > 0,
             opening_hours: {
-                monday: {
-                    open: input.settings.store_open_time
-                        ? formatTime(input.settings.store_open_time)
-                        : "08:00",
-                    close: input.settings.store_close_time
-                        ? formatTime(input.settings.store_close_time)
-                        : "20:00",
-                },
-                tuesday: {
-                    open: input.settings.store_open_time
-                        ? formatTime(input.settings.store_open_time)
-                        : "08:00",
-                    close: input.settings.store_close_time
-                        ? formatTime(input.settings.store_close_time)
-                        : "20:00",
-                },
-                wednesday: {
-                    open: input.settings.store_open_time
-                        ? formatTime(input.settings.store_open_time)
-                        : "08:00",
-                    close: input.settings.store_close_time
-                        ? formatTime(input.settings.store_close_time)
-                        : "20:00",
-                },
-                thursday: {
-                    open: input.settings.store_open_time
-                        ? formatTime(input.settings.store_open_time)
-                        : "08:00",
-                    close: input.settings.store_close_time
-                        ? formatTime(input.settings.store_close_time)
-                        : "20:00",
-                },
-                friday: {
-                    open: input.settings.store_open_time
-                        ? formatTime(input.settings.store_open_time)
-                        : "08:00",
-                    close: input.settings.store_close_time
-                        ? formatTime(input.settings.store_close_time)
-                        : "20:00",
-                },
-                saturday: {
-                    open: input.settings.store_open_time
-                        ? formatTime(input.settings.store_open_time)
-                        : "08:00",
-                    close: input.settings.store_close_time
-                        ? formatTime(input.settings.store_close_time)
-                        : "16:00",
-                },
-                sunday: { open: null, close: null }, // Closed unless trading_sunday
+                monday: getDayHours("monday"),
+                tuesday: getDayHours("tuesday"),
+                wednesday: getDayHours("wednesday"),
+                thursday: getDayHours("thursday"),
+                friday: getDayHours("friday"),
+                saturday: getDayHours("saturday", "08:00", "16:00"), // Sobota krótsza
+                sunday: { open: null, close: null }, // Zamknięte (chyba że trading_sunday)
             },
         },
         shift_templates: input.templates.map(transformTemplateToCPSAT),

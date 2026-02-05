@@ -64,24 +64,27 @@ EMPLOYMENT_MULTIPLIERS: Dict[str, float] = {
 
 WEIGHT_HIERARCHY = {
     # POZIOM 1: KRYTYCZNY - Godziny (10,000,000 pkt/min)
-    # Kara za odchylenie od okna [Norma, Norma+480min]
+    # Kara za odchylenie od okna [Norma]
     'HOURS_UNDER_TARGET_PER_MINUTE': 20_000_000,   # Poniżej normy
     'HOURS_OVER_BUFFER_PER_MINUTE': 10_000_000,    # Powyżej Norma
     
     # POZIOM 2: COVERAGE - Obsada (100,000 pkt/os)
-    'COVERAGE_SLACK_PER_PERSON': 100_000,          # Brak pracownika na zmianie
+    'COVERAGE_SLACK_PER_PERSON': 500_000,          # Brak pracownika na zmianie
+    
+    # POZIOM 2.5: RÓWNOWAGA OBSADY DZIENNEJ (50,000 pkt)
+    'DAILY_COVERAGE_BALANCE': 100,              # Wyrównanie obsady między zmianami w dniu
     
     # POZIOM 3: KODEKS PRACY - Miękkie (10,000 pkt)
     'DAILY_REST_VIOLATION': 10_000,                # Naruszenie 11h odpoczynku
     'WEEKLY_REST_VIOLATION': 100,               # Naruszenie 35h odpoczynku
-    'CONSECUTIVE_DAYS_VIOLATION': 200,          # >6 dni z rzędu
+    'CONSECUTIVE_DAYS_VIOLATION': 100,          # >6 dni z rzędu
     'MAX_WEEKLY_HOURS_VIOLATION': 100,          # >48h/tydzień
     
     # POZIOM 4: PREFERENCJE I SPRAWIEDLIWOŚĆ (100 pkt)
-    'PREFERENCE_MATCH_BONUS': 200,                 # Bonus za zgodność
+    'PREFERENCE_MATCH_BONUS': 100,                 # Bonus za zgodność
     'AVOIDED_DAY_PENALTY': 100,                    # Kara za niechciany dzień
-    'WEEKEND_FAIRNESS_PENALTY': 100,               # Sprawiedliwe weekendy
-    'SHIFT_DISTRIBUTION_PENALTY': 100,             # Równy rozkład zmian
+    'WEEKEND_FAIRNESS_PENALTY': 200,               # Sprawiedliwe weekendy
+    'SHIFT_DISTRIBUTION_PENALTY': 150,             # Równy rozkład zmian
     'SUNDAY_WORK_PENALTY': 100,                    # Praca w niedzielę
 }
 
@@ -690,6 +693,7 @@ class CPSATScheduler:
         # Funkcja celu - różne poziomy
         self.objective_level1: List[Tuple[cp_model.IntVar, int, str]] = []  # Godziny
         self.objective_level2: List[Tuple[cp_model.IntVar, int, str]] = []  # Coverage
+        self.objective_level2_5: List[Tuple[cp_model.IntVar, int, str]] = []  # Balance obsady
         self.objective_level3: List[Tuple[cp_model.IntVar, int, str]] = []  # Kodeks Pracy
         self.objective_level4: List[Tuple[cp_model.IntVar, int, str]] = []  # Preferencje
         
@@ -1431,6 +1435,7 @@ class CPSATScheduler:
         self._add_sunday_penalty()
         self._add_weekend_fairness()
         self._add_shift_distribution_fairness()
+        self._add_daily_coverage_balance()
         
         print(f"   ✅ Dodano preferencje i sprawiedliwość")
     
@@ -1615,6 +1620,65 @@ class CPSATScheduler:
         self.stats['soft_constraints'] += fairness_count
         print(f"   → Sprawiedliwy rozkład zmian: {fairness_count} szablonów")
     
+    def _add_daily_coverage_balance(self):
+        """
+        Równomierne rozmieszczenie obsady w ciągu dnia.
+        
+        Zamiast mieć jedną zmianę z 7 pracownikami i resztę z 1,
+        optymalizujemy aby obsada była równomiernie rozłożona (np. wszędzie 2-3).
+        
+        Dla każdego dnia minimalizujemy różnicę między max a min obsadą zmian.
+        """
+        balance_count = 1
+        
+        for day in self.data.all_days:
+            if not self.data.is_workable_day(day):
+                continue
+            
+            # Zbierz zmienne obsady dla wszystkich aktywnych szablonów w tym dniu
+            shift_coverage_vars = []
+            
+            for tmpl_idx, tmpl in enumerate(self.data.templates):
+                if not self.data.can_template_be_used_on_day(tmpl, day):
+                    continue
+                
+                # Zbierz wszystkich pracowników na tej zmianie
+                assigned_vars = [
+                    self.shifts[(e, day, tmpl_idx)]
+                    for e in range(len(self.data.employees))
+                    if (e, day, tmpl_idx) in self.shifts
+                ]
+                
+                if assigned_vars:
+                    # Zmienna: liczba pracowników na tej zmianie
+                    coverage_var = self.model.NewIntVar(0, len(assigned_vars), f"day_cov_{day}_{tmpl_idx}")
+                    self.model.Add(coverage_var == sum(assigned_vars))
+                    shift_coverage_vars.append(coverage_var)
+            
+            # Jeśli są co najmniej 2 zmiany w tym dniu, minimalizuj różnicę
+            if len(shift_coverage_vars) >= 2:
+                max_coverage = self.model.NewIntVar(0, len(self.data.employees), f"max_cov_day_{day}")
+                min_coverage = self.model.NewIntVar(0, len(self.data.employees), f"min_cov_day_{day}")
+                
+                self.model.AddMaxEquality(max_coverage, shift_coverage_vars)
+                self.model.AddMinEquality(min_coverage, shift_coverage_vars)
+                
+                # Różnica między max a min obsadą
+                coverage_diff = self.model.NewIntVar(0, len(self.data.employees), f"cov_diff_day_{day}")
+                self.model.Add(coverage_diff == max_coverage - min_coverage)
+                
+                # Karamy za każdą jednostkę różnicy (chcemy aby było jak najbardziej równomiernie)
+                # WYSOKI PRIORYTET - równomierna obsada to klucz do dobrego grafiku
+                self.objective_level2_5.append((
+                    coverage_diff,
+                    WEIGHT_HIERARCHY['DAILY_COVERAGE_BALANCE'],
+                    f"daily_coverage_balance_{day}"
+                ))
+                balance_count += 1
+        
+        self.stats['soft_constraints'] += balance_count
+        print(f"   → Równomierna obsada dzienna: {balance_count} dni")
+    
     # =========================================================================
     # KROK 7: Budowanie funkcji celu i rozwiązywanie
     # =========================================================================
@@ -1641,6 +1705,10 @@ class CPSATScheduler:
         for var, weight, name in self.objective_level2:
             objective_terms.append(var * weight)
         
+        # Level 2.5: Balance obsady dziennej
+        for var, weight, name in self.objective_level2_5:
+            objective_terms.append(var * weight)
+        
         # Level 3: Kodeks Pracy
         for var, weight, name in self.objective_level3:
             objective_terms.append(var * weight)
@@ -1654,6 +1722,7 @@ class CPSATScheduler:
         
         print(f"   Level 1 (Godziny): {len(self.objective_level1)} terms, waga={WEIGHT_HIERARCHY['HOURS_UNDER_TARGET_PER_MINUTE']:,}")
         print(f"   Level 2 (Coverage): {len(self.objective_level2)} terms, waga={WEIGHT_HIERARCHY['COVERAGE_SLACK_PER_PERSON']:,}")
+        print(f"   Level 2.5 (Balance obsady): {len(self.objective_level2_5)} terms, waga={WEIGHT_HIERARCHY['DAILY_COVERAGE_BALANCE']:,}")
         print(f"   Level 3 (Kodeks Pracy): {len(self.objective_level3)} terms, waga={WEIGHT_HIERARCHY['DAILY_REST_VIOLATION']:,}")
         print(f"   Level 4 (Preferencje): {len(self.objective_level4)} terms, waga={WEIGHT_HIERARCHY['PREFERENCE_MATCH_BONUS']}")
     
@@ -1753,6 +1822,11 @@ class CPSATScheduler:
         coverage_penalty = sum(solver.Value(var) * weight for var, weight, _ in self.objective_level2)
         coverage_issues = sum(1 for var, _, _ in self.objective_level2 if solver.Value(var) > 0)
         print(f"      L2 Coverage: {coverage_penalty:,} pkt ({coverage_issues} braków)")
+        
+        # Level 2.5: Balance obsady
+        balance_penalty = sum(solver.Value(var) * weight for var, weight, _ in self.objective_level2_5)
+        balance_issues = sum(1 for var, _, _ in self.objective_level2_5 if solver.Value(var) > 0)
+        print(f"      L2.5 Balance obsady: {balance_penalty:,} pkt ({balance_issues} dni z nierówną obsadą)")
         
         # Level 3: Kodeks Pracy
         labor_penalty = sum(solver.Value(var) * weight for var, weight, _ in self.objective_level3)

@@ -176,6 +176,14 @@ export async function generateScheduleWithPython(
         `Original input.settings.store_close_time: ${input.settings?.store_close_time}`,
     );
     console.log(
+        `Original input.settings.opening_hours:`,
+        JSON.stringify(input.settings?.opening_hours, null, 2),
+    );
+    console.log(
+        `Transformed organization_settings:`,
+        JSON.stringify(transformedInput.organization_settings, null, 2),
+    );
+    console.log(
         `Transformed monthly_hours_norm: ${transformedInput.monthly_hours_norm}`,
     );
     console.log(

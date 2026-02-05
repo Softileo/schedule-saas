@@ -598,6 +598,22 @@ export async function POST(request: Request) {
             );
         }
 
+        // LOG: Sprawdź co jest w settings
+        logger.log("🔍 DEBUG - Organization Settings:");
+        logger.log(
+            "  store_open_time:",
+            settings.store_open_time,
+            "store_close_time:",
+            settings.store_close_time,
+        );
+        logger.log("  opening_hours:", JSON.stringify(settings.opening_hours));
+        logger.log(
+            "  opening_hours type:",
+            typeof settings.opening_hours,
+            "is null:",
+            settings.opening_hours === null,
+        );
+
         // 5. Święta i dni robocze
         const holidays = await fetchHolidaysForMonth(year, month);
         const tradingSundays = getTradingSundaysFromSettings(
