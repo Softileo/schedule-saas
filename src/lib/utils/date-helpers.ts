@@ -153,7 +153,11 @@ export function minutesToTime(minutes: number): string {
  * - 00:00 - 00:00 = 24h (pełna doba)
  * - 00:00 - 24:00 = 24h (pełna doba)
  */
-export function calculateWorkHours(start: string, end: string): string {
+export function calculateWorkHours(
+    start: string,
+    end: string,
+    breakMinutes: number = 0,
+): string {
     const startTime = parseTime(start);
     const endTime = parseTime(end);
 
@@ -177,6 +181,9 @@ export function calculateWorkHours(start: string, end: string): string {
     if (totalMinutes <= 0) {
         totalMinutes += 24 * 60;
     }
+
+    // Odejmij przerwy
+    totalMinutes -= breakMinutes;
 
     const hours = Math.floor(totalMinutes / 60);
     const mins = totalMinutes % 60;

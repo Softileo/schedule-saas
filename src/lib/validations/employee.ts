@@ -12,14 +12,14 @@ export const employeeSchema = z.object({
     phone: z.string().optional().or(z.literal("")),
     employmentType: z.enum(EMPLOYMENT_TYPE_VALUES, {
         message: "Wybierz typ etatu",
-    }), 
+    }),
     customHours: z
         .number()
         .min(1, "Minimalna liczba godzin to 1")
         .max(12, "Maksymalna liczba godzin to 12")
         .optional()
         .nullable(),
-    isSupervisor: z.boolean().optional().default(false),
+    isSupervisor: z.boolean().optional(),
 });
 
 export const employeeUpdateSchema = employeeSchema.partial();
