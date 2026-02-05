@@ -87,7 +87,7 @@ WEIGHT_HIERARCHY = {
 
 # Bufor godzin ponad normę (w minutach) - bez kary
 # Pozwala na odchylenie +/- 8h od normy (480 minut)
-HOURS_BUFFER_MINUTES = 60  # 8 godzin
+HOURS_BUFFER_MINUTES = 0  # 8 godzin
 
 # Limity Kodeksu Pracy (teraz jako soft constraints)
 LABOR_CODE = {
