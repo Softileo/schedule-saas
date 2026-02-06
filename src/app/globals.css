@@ -339,7 +339,7 @@
         @apply border-border outline-ring/50;
     }
     body {
-        @apply bg-linear-to-br from-slate-50 to-slate-100 text-foreground;
+        @apply bg-linear-to-br from-blue-50/50 to-blue-100/50 text-foreground;
     }
 }
 

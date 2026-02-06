@@ -370,7 +370,7 @@ export function AIGenerateDialog({
                 )}
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                        <Sparkles className="h-5 w-5 text-violet-500" />
+                        <Sparkles className="h-5 w-5 text-blue-500" />
                         Automatyczne generowanie grafiku
                     </DialogTitle>
                     <DialogDescription>
@@ -525,16 +525,16 @@ export function AIGenerateDialog({
                                 <div className="space-y-4">
                                     {/* Quality Score + Time */}
                                     {scheduleQuality && (
-                                        <div className="bg-linear-to-r from-violet-50 to-purple-50 rounded-lg p-4 border border-violet-100">
+                                        <div className="bg-linear-to-r from-blue-50 to-purple-50 rounded-lg p-4 border border-blue-100">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-3">
-                                                    <Sparkles className="h-5 w-5 text-violet-500" />
+                                                    <Sparkles className="h-5 w-5 text-blue-500" />
                                                     <div>
-                                                        <span className="font-medium text-violet-900">
+                                                        <span className="font-medium text-blue-900">
                                                             Jakość grafiku
                                                         </span>
                                                         {optimization?.executionTimeMs && (
-                                                            <p className="text-xs text-violet-600 mt-0.5">
+                                                            <p className="text-xs text-blue-600 mt-0.5">
                                                                 zoptymalizowało
                                                                 w{" "}
                                                                 {
