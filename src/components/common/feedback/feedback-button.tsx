@@ -34,7 +34,7 @@ export function FeedbackButton() {
                             )}
                             aria-label="Zgłoś błąd lub sugestię"
                         >
-                            <Flag className="w-5 h-5 " />
+                            <Flag className="w-5 h-5" />
                         </button>
                     </TooltipTrigger>
                     <TooltipContent

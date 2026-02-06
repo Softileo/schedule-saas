@@ -151,7 +151,7 @@ export default async function SchedulePage({
     ]);
 
     return (
-        <div className="space-y-4 max-w-400 mx-auto px-0 py-2 min-h-dvh pb-24">
+        <div className="space-y-4 max-w-400 mx-auto px-0 py-2 min-h-dvh pb-12">
             <ScheduleCalendarDnD
                 year={year}
                 month={month}

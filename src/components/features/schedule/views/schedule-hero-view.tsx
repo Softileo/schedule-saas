@@ -606,13 +606,17 @@ ScheduleHeroViewProps) {
             </div>
 
             {/* Główna siatka grafiku */}
-            <div className="border border-slate-200/80 rounded-2xl bg-white shadow-lg shadow-slate-200/50">
+            <div className="border border-slate-200/80 rounded-2xl bg-white shadow-lg shadow-slate-200/50 overflow-hidden">
                 <div className="flex">
                     {/* Sticky kolumna z pracownikami */}
                     <div className="shrink-0 bg-white z-20 border-r border-slate-200/80 w-45 sm:w-45 max-sm:w-24">
                         <div className="h-14 px-4 py-3 bg-linear-to-b from-slate-50 to-slate-100/50 border-b border-slate-200/80 flex items-center">
-                            <span className="text-[9px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                Pracownik
+                            <span className="text-[9px] sm:text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                Pracownik{" "}
+                                <span className="text-blue-400">
+                                    {employees.length > 0 &&
+                                        `(${employees.length})`}
+                                </span>
                             </span>
                         </div>
 

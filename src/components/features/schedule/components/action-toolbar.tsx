@@ -49,26 +49,25 @@ export const ActionToolbar = memo(function ActionToolbar({
             <TooltipProvider delayDuration={300}>
                 <Tooltip>
                     <TooltipTrigger asChild>
-
-                            <Button
-                                variant="ghost"
-                                className="px-3 m-0.5 group text-violet-600 hover:text-blue-500 bg-violet-50 rounded-full transition-colors sm:rounded-md"
-                                onClick={onOpenAIDialog}
-                            >
-                                <div className="relative">
-                                    <Sparkles size={22} />
-                                    <span className="absolute sm:hidden animate-pulse rounded-full z-0 -top-2 -right-1.5 text-[8px] font-bold">
-                                        AI
-                                    </span>
-                                </div>
-
-                                <span className="hidden sm:block">
-                                    <span className="bg-linear-to-r group-hover:bg-linear-to-bl from-blue-600 via-blue-500 to-violet-500 bg-clip-text text-transparent font-semibold">
-                                        Generuj
-                                    </span>
+                        <Button
+                            variant="ghost"
+                            className="px-3 m-0.5 group relative overflow-hidden text-violet-600 hover:text-blue-500 bg-violet-50 rounded-full transition-colors sm:rounded-md"
+                            onClick={onOpenAIDialog}
+                        >
+                            <div className="bg-linear-30 from-transparent via-white/80 to-transparent w-1/2 h-full -left-full absolute animate-shimmer2 z-10" />
+                            <div className="relative">
+                                <Sparkles size={22} />
+                                <span className="absolute sm:hidden animate-pulse rounded-full z-0 -top-2 -right-1.5 text-[8px] font-bold">
+                                    AI
                                 </span>
-                            </Button>
+                            </div>
 
+                            <span className="hidden sm:block">
+                                <span className="bg-linear-to-r group-hover:bg-linear-to-bl from-blue-600 via-blue-500 to-violet-500 bg-clip-text text-transparent font-semibold">
+                                    Generuj
+                                </span>
+                            </span>
+                        </Button>
                     </TooltipTrigger>
 
                     <TooltipContent>

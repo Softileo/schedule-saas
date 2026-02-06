@@ -49,10 +49,21 @@
         transform: translateY(var(--float-y, 10px));
     }
 }
-
 @keyframes shimmer {
     100% {
         transform: translateX(100%);
+    }
+}
+
+@keyframes shimmer2 {
+    0% {
+        transform: translateX(0%);
+    }
+    80% {
+        transform: translateX(0%);
+    }
+    100% {
+        transform: translateX(400%);
     }
 }
 
@@ -91,6 +102,9 @@
 
 .animate-float {
     animation: floatY 3s ease-in-out infinite;
+}
+.animate-shimmer2 {
+    animation: shimmer2 5s ease-in-out infinite;
 }
 
 /* ============================================

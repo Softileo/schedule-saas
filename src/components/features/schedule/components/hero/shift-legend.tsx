@@ -14,7 +14,7 @@ export const ShiftLegend = memo(function ShiftLegend({
     if (templates.length === 0) return null;
 
     return (
-        <div className="border border-slate-200 rounded-xl bg-white p-4 shadow-sm">
+        <div className="border border-slate-200 rounded-2xl bg-white p-4">
             <div className="flex flex-wrap items-center gap-4 text-xs">
                 <span className="font-medium text-slate-400 tracking-wide">
                     Legenda:
