@@ -7,6 +7,7 @@ import {
     Send,
     CheckCircle2,
     MessageSquarePlus,
+    Sparkles,
 } from "lucide-react";
 import {
     Dialog,
@@ -28,13 +29,11 @@ interface FeedbackDialogProps {
 }
 
 type FeedbackType = "bug" | "suggestion";
-type Priority = "low" | "medium" | "high";
 
 export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
     const [type, setType] = useState<FeedbackType>("bug");
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
-    const [priority, setPriority] = useState<Priority>("medium");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -48,7 +47,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
             const response = await fetch("/api/feedback", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ type, title, description, priority }),
+                body: JSON.stringify({ type, title, description }),
             });
 
             const data = await response.json();
@@ -66,12 +65,10 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
     };
 
     const handleClose = () => {
-        // Reset form on close
         setTimeout(() => {
             setType("bug");
             setTitle("");
             setDescription("");
-            setPriority("medium");
             setIsSuccess(false);
             setError(null);
         }, 200);
@@ -80,72 +77,90 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
 
     return (
         <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="sm:max-w-xl p-0 gap-0">
                 {isSuccess ? (
                     // Ekran sukcesu
-                    <div className="py-8 text-center">
-                        <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                    <div className="py-12 px-8 text-center">
+                        <div className="mx-auto w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mb-4">
                             <CheckCircle2 className="w-8 h-8 text-green-600" />
                         </div>
                         <h2 className="text-xl font-semibold text-slate-900 mb-2">
-                            Dziękujemy za zgłoszenie! 🎉
+                            Dziękujemy za zgłoszenie
                         </h2>
                         <p className="text-slate-600 mb-6">
-                            Twoja opinia pomaga nam ulepszać aplikację.
-                            <br />
-                            Doceniamy każde zgłoszenie!
+                            Twoja opinia pomaga nam ulepszać aplikację
                         </p>
-                        <Button onClick={handleClose}>Zamknij</Button>
+                        <Button onClick={handleClose} variant="outline">
+                            Zamknij
+                        </Button>
                     </div>
                 ) : (
-                    // Formularz
                     <>
-                        <DialogHeader>
-                            <DialogTitle className="flex items-center gap-2">
-                                <MessageSquarePlus className="h-5 w-5 text-indigo-600" />
-                                Zgłoś błąd lub sugestię
+                        <DialogHeader className="p-6 pb-4 space-y-2">
+                            <DialogTitle className="text-xl font-semibold text-slate-900">
+                                Zgłoś opinię
                             </DialogTitle>
-                            <DialogDescription>
-                                Pomóż nam ulepszyć aplikację! Twoje zgłoszenie
-                                zostanie przesłane do zespołu.
+                            <DialogDescription className="text-slate-600">
+                                Pomóż nam ulepszyć aplikację
                             </DialogDescription>
                         </DialogHeader>
 
                         <form
                             onSubmit={handleSubmit}
-                            className="space-y-4 mt-4"
+                            className="px-6 pb-6 space-y-5"
                         >
                             {/* Typ zgłoszenia */}
                             <div className="space-y-2">
-                                <Label>Typ zgłoszenia</Label>
-                                <div className="grid grid-cols-2 gap-2">
+                                <Label className="text-sm font-medium text-slate-700">
+                                    Typ
+                                </Label>
+                                <div className="grid grid-cols-2 gap-3">
                                     <button
                                         type="button"
                                         onClick={() => setType("bug")}
                                         className={cn(
-                                            "flex items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all",
+                                            "flex items-center gap-3 p-4 rounded-lg border transition-all",
                                             type === "bug"
-                                                ? "border-red-500 bg-red-50 text-red-700"
-                                                : "border-slate-200 hover:border-slate-300"
+                                                ? "border-rose-300 bg-rose-50"
+                                                : "border-slate-200 hover:border-slate-300 hover:bg-slate-50",
                                         )}
                                     >
-                                        <Bug className="w-5 h-5" />
-                                        <span className="font-medium">
+                                        <div
+                                            className={cn(
+                                                "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
+                                                type === "bug"
+                                                    ? "bg-rose-100 text-rose-600"
+                                                    : "bg-slate-100 text-slate-600",
+                                            )}
+                                        >
+                                            <Bug className="w-5 h-5" />
+                                        </div>
+                                        <span className="font-medium text-slate-900">
                                             Błąd
                                         </span>
                                     </button>
+
                                     <button
                                         type="button"
                                         onClick={() => setType("suggestion")}
                                         className={cn(
-                                            "flex items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all",
+                                            "flex items-center gap-3 p-4 rounded-lg border transition-all",
                                             type === "suggestion"
-                                                ? "border-blue-500 bg-blue-50 text-blue-700"
-                                                : "border-slate-200 hover:border-slate-300"
+                                                ? "border-blue-300 bg-blue-50"
+                                                : "border-slate-200 hover:border-slate-300 hover:bg-slate-50",
                                         )}
                                     >
-                                        <Lightbulb className="w-5 h-5" />
-                                        <span className="font-medium">
+                                        <div
+                                            className={cn(
+                                                "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
+                                                type === "suggestion"
+                                                    ? "bg-blue-100 text-blue-600"
+                                                    : "bg-slate-100 text-slate-600",
+                                            )}
+                                        >
+                                            <Lightbulb className="w-5 h-5" />
+                                        </div>
+                                        <span className="font-medium text-slate-900">
                                             Sugestia
                                         </span>
                                     </button>
@@ -154,7 +169,12 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
 
                             {/* Tytuł */}
                             <div className="space-y-2">
-                                <Label htmlFor="title">Tytuł</Label>
+                                <Label
+                                    htmlFor="title"
+                                    className="text-sm font-medium text-slate-700"
+                                >
+                                    Tytuł
+                                </Label>
                                 <Input
                                     id="title"
                                     placeholder={
@@ -168,71 +188,28 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                                 />
                             </div>
 
-                            {/* Priorytet (tylko dla błędów) */}
-                            {type === "bug" && (
-                                <div className="space-y-2">
-                                    <Label>Priorytet</Label>
-                                    <div className="flex gap-2">
-                                        {[
-                                            {
-                                                value: "low",
-                                                label: "Niski",
-                                                color: "green",
-                                            },
-                                            {
-                                                value: "medium",
-                                                label: "Średni",
-                                                color: "yellow",
-                                            },
-                                            {
-                                                value: "high",
-                                                label: "Wysoki",
-                                                color: "red",
-                                            },
-                                        ].map((p) => (
-                                            <button
-                                                key={p.value}
-                                                type="button"
-                                                onClick={() =>
-                                                    setPriority(
-                                                        p.value as Priority
-                                                    )
-                                                }
-                                                className={cn(
-                                                    "flex-1 py-2 px-3 rounded-lg border-2 text-sm font-medium transition-all",
-                                                    priority === p.value
-                                                        ? p.color === "green"
-                                                            ? "border-green-500 bg-green-50 text-green-700"
-                                                            : p.color ===
-                                                              "yellow"
-                                                            ? "border-yellow-500 bg-yellow-50 text-yellow-700"
-                                                            : "border-red-500 bg-red-50 text-red-700"
-                                                        : "border-slate-200 hover:border-slate-300"
-                                                )}
-                                            >
-                                                {p.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
                             {/* Opis */}
                             <div className="space-y-2">
-                                <Label htmlFor="description">Opis</Label>
+                                <Label
+                                    htmlFor="description"
+                                    className="text-sm font-medium text-slate-700"
+                                >
+                                    Opis
+                                </Label>
                                 <Textarea
                                     id="description"
                                     placeholder={
                                         type === "bug"
-                                            ? "Opisz szczegółowo co się dzieje, kiedy występuje problem i jakie kroki prowadzą do błędu..."
-                                            : "Opisz swoją propozycję - jak funkcja powinna działać i dlaczego byłaby przydatna..."
+                                            ? "Opisz problem i kroki do jego odtworzenia..."
+                                            : "Opisz swoją propozycję..."
                                     }
                                     value={description}
                                     onChange={(e) =>
                                         setDescription(e.target.value)
                                     }
                                     required
-                                    rows={5}
+                                    rows={4}
+                                    className="resize-none"
                                 />
                             </div>
 
@@ -244,7 +221,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                             )}
 
                             {/* Submit */}
-                            <div className="flex justify-end gap-2 pt-2">
+                            <div className="flex justify-end gap-3 pt-2">
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -266,7 +243,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                                     ) : (
                                         <>
                                             <Send className="w-4 h-4 mr-2" />
-                                            Wyślij zgłoszenie
+                                            Wyślij
                                         </>
                                     )}
                                 </Button>

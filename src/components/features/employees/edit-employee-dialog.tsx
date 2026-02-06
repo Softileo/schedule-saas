@@ -128,7 +128,7 @@ export function EditEmployeeDialog({
                 </div>
                 <div className="flex items-center gap-3">
                     <div
-                        className="w-10 h-10 rounded-lg border-2 border-muted flex items-center justify-center text-white font-semibold text-sm shadow-sm"
+                        className="w-13 h-10 rounded-lg border-2 border-muted flex items-center justify-center text-white font-semibold text-sm shadow-sm"
                         style={{ backgroundColor: selectedColor }}
                     >
                         {getEmployeeInitials(employee)}
@@ -151,13 +151,16 @@ export function EditEmployeeDialog({
                         ))}
                     </div>
                 </div>
-                <Input
-                    type="color"
-                    value={selectedColor}
-                    onChange={(e) => setSelectedColor(e.target.value)}
-                    className="h-8 w-20 p-1 cursor-pointer"
-                    disabled={isLoading}
-                />
+                <div className="flex flex-col gap-1 py-2">
+                    <Label>Własny kolor</Label>
+                    <Input
+                        type="color"
+                        value={selectedColor}
+                        onChange={(e) => setSelectedColor(e.target.value)}
+                        className="h-10 w-24 p-1 cursor-pointer"
+                        disabled={isLoading}
+                    />
+                </div>
             </div>
 
             <DialogFooterActions

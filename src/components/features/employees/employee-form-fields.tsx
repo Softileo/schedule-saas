@@ -22,6 +22,7 @@ import {
     EMPLOYMENT_TYPES,
     type EmploymentType,
 } from "@/lib/constants/employment";
+import Beta from "@/components/ui/beta";
 
 interface EmployeeFormFieldsProps {
     register: UseFormRegister<EmployeeInput>;
@@ -150,9 +151,10 @@ export function EmployeeFormFields({
                 </div>
             )}
 
-            <div className="flex items-center space-x-3 pt-2">
+            <div className="flex items-center space-x-3 pt-2 border p-3 rounded-md border-yellow-200 bg-yellow-50/50">
                 <Checkbox
                     id="isSupervisor"
+                    className="bg-white"
                     checked={isSupervisor}
                     onCheckedChange={(checked) =>
                         setValue("isSupervisor", checked === true)
@@ -165,9 +167,14 @@ export function EmployeeFormFields({
                         className="text-sm font-medium cursor-pointer"
                     >
                         Kierownik / Opiekun zmiany
+                        <Beta />
                     </Label>
                     <p className="text-xs text-muted-foreground">
                         Zawsze musi być co najmniej jeden kierownik na zmianie
+                    </p>
+                    <p className="text-xs text-yellow-800">
+                        wiec jesli masz duzo zmian to warto miec wiecej niz jednego
+                        kierownika. Inaczej generator grafiku nie rozpisze grafiku
                     </p>
                 </div>
             </div>
