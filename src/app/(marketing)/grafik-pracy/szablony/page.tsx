@@ -17,7 +17,6 @@ import {
     FileSpreadsheet,
     FileText,
     Download,
-    ExternalLink,
     CheckCircle2,
     Users,
     Clock,
@@ -101,43 +100,43 @@ const TEMPLATES = [
         id: 1,
         name: "Grafik tygodniowy - podstawowy",
         category: "weekly",
-        format: "Excel",
+        format: "CSV",
         formatIcon: FileSpreadsheet,
         description: "Prosty grafik na 7 dni dla zespołu do 10 osób",
         features: ["Do 10 pracowników", "Godziny pracy", "Suma godzin"],
         popular: true,
-        downloadUrl: "#",
+        downloadUrl: "/api/schedule/template/csv?year=2026&employees=10",
     },
     {
         id: 2,
         name: "Grafik miesięczny - pełny",
         category: "monthly",
-        format: "Excel",
+        format: "CSV",
         formatIcon: FileSpreadsheet,
-        description: "Rozbudowany grafik z automatycznym liczeniem godzin",
+        description: "Rozbudowany grafik z oznaczonymi weekendami",
         features: [
             "31 dni",
-            "Formuły automatyczne",
+            "Oznaczone weekendy",
             "Podsumowanie miesięczne",
-            "Święta PL",
+            "Otwórz w Excel",
         ],
         popular: true,
-        downloadUrl: "#",
+        downloadUrl: "/api/schedule/template/csv?year=2026&employees=15",
     },
     {
         id: 3,
         name: "Grafik zmianowy 12h",
         category: "shift",
-        format: "Excel",
+        format: "CSV",
         formatIcon: FileSpreadsheet,
         description: "Dla systemu równoważnego czasu pracy",
         features: [
             "Zmiany 12h",
             "Rotacja zmian",
             "Nocne/dzienne",
-            "Kontrola odpoczynku",
+            "Otwórz w Excel",
         ],
-        downloadUrl: "#",
+        downloadUrl: "/api/schedule/template/csv?year=2026&employees=8",
     },
     {
         id: 4,
@@ -145,29 +144,30 @@ const TEMPLATES = [
         category: "weekly",
         format: "PDF",
         formatIcon: FileText,
-        description: "Gotowy do wydruku w formacie A4",
+        description: "Gotowy do wydruku w formacie A4 poziomo",
         features: ["Format A4", "Czytelny druk", "Miejsce na notatki"],
-        downloadUrl: "#",
+        downloadUrl: "/api/schedule/template/pdf?year=2026&employees=10",
+        isPDF: true,
     },
     {
         id: 5,
         name: "Grafik dla sklepu",
         category: "industry",
-        format: "Excel",
+        format: "CSV",
         formatIcon: FileSpreadsheet,
-        description: "Z uwzględnieniem niedziel handlowych",
+        description: "Z uwzględnieniem weekendów i niedziel handlowych",
         features: [
-            "Niedziele handlowe 2026",
+            "Oznaczone weekendy",
             "Rotacja weekendowa",
             "Godziny otwarcia",
         ],
-        downloadUrl: "#",
+        downloadUrl: "/api/schedule/template/csv?year=2026&employees=8",
     },
     {
         id: 6,
         name: "Grafik dla restauracji",
         category: "industry",
-        format: "Excel",
+        format: "CSV",
         formatIcon: FileSpreadsheet,
         description: "Kuchnia i sala osobno",
         features: [
@@ -175,28 +175,28 @@ const TEMPLATES = [
             "Zmiany wieczorne",
             "Weekendy wzmocnione",
         ],
-        downloadUrl: "#",
+        downloadUrl: "/api/schedule/template/csv?year=2026&employees=12",
     },
     {
         id: 7,
-        name: "Grafik miesięczny - Google Sheets",
+        name: "Grafik miesięczny - do druku",
         category: "monthly",
-        format: "Google Sheets",
-        formatIcon: FileSpreadsheet,
-        description: "Edycja online, współdzielenie z zespołem",
+        format: "PDF",
+        formatIcon: FileText,
+        description: "Wydrukuj i wypełnij ręcznie na papierze",
         features: [
-            "Współpraca w czasie rzeczywistym",
-            "Dostęp z każdego urządzenia",
-            "Automatyczne kopie",
+            "Format A4 poziomy",
+            "Czytelna tabela",
+            "Podpis sporządzającego",
         ],
-        isOnline: true,
-        downloadUrl: "#",
+        downloadUrl: "/api/schedule/template/pdf?year=2026&employees=15",
+        isPDF: true,
     },
     {
         id: 8,
         name: "Grafik dla ochrony - 24h",
         category: "shift",
-        format: "Excel",
+        format: "CSV",
         formatIcon: FileSpreadsheet,
         description: "System zmian 24-godzinnych",
         features: [
@@ -205,7 +205,7 @@ const TEMPLATES = [
             "Kontrola norm czasu",
             "Odpoczynki",
         ],
-        downloadUrl: "#",
+        downloadUrl: "/api/schedule/template/csv?year=2026&employees=6",
     },
 ];
 
@@ -348,23 +348,23 @@ export default function SzablonyPage() {
                                         <Button
                                             className="w-full"
                                             variant={
-                                                template.isOnline
+                                                template.isPDF
                                                     ? "outline"
                                                     : "default"
                                             }
-                                            disabled
+                                            asChild
                                         >
-                                            {template.isOnline ? (
-                                                <>
-                                                    <ExternalLink className="w-4 h-4 mr-2" />
-                                                    Otwórz online (wkrótce)
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Download className="w-4 h-4 mr-2" />
-                                                    Pobierz (wkrótce)
-                                                </>
-                                            )}
+                                            <a
+                                                href={template.downloadUrl}
+                                                {...(template.isPDF
+                                                    ? { target: "_blank" }
+                                                    : { download: true })}
+                                            >
+                                                <Download className="w-4 h-4 mr-2" />
+                                                {template.isPDF
+                                                    ? "Otwórz do druku"
+                                                    : "Pobierz szablon"}
+                                            </a>
                                         </Button>
                                     </Card>
                                 );

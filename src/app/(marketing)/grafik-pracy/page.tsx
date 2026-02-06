@@ -10,6 +10,7 @@ import { generateSEOMetadata } from "@/lib/seo/metadata";
 import { MONTH_PAGES_2026, INDUSTRY_PAGES } from "@/lib/seo/page-configs";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
     Calendar,
     ArrowRight,
@@ -20,6 +21,9 @@ import {
     Building,
     Package,
     Briefcase,
+    Download,
+    FileSpreadsheet,
+    FileText,
 } from "lucide-react";
 
 export const metadata: Metadata = generateSEOMetadata({
@@ -51,7 +55,7 @@ export default function GrafikPracyPage() {
     // Pokaż tylko najbliższe 4 miesiące
     const currentMonth = new Date().getMonth() + 1;
     const upcomingMonths = MONTH_PAGES_2026.filter(
-        (m) => m.month >= currentMonth
+        (m) => m.month >= currentMonth,
     ).slice(0, 4);
 
     return (
@@ -176,23 +180,74 @@ export default function GrafikPracyPage() {
                         </h2>
                         <p className="text-gray-600 mb-8">
                             Darmowe szablony grafików pracy w różnych formatach.
+                            Gotowe do użycia.
                         </p>
 
-                        <div className="grid sm:grid-cols-3 gap-4">
-                            {["Excel", "PDF", "Google Sheets"].map((format) => (
-                                <Card
-                                    key={format}
-                                    className="p-6 rounded-xl opacity-60"
+                        <div className="grid sm:grid-cols-2 gap-4">
+                            <Card className="p-6 rounded-xl hover:shadow-md transition-shadow">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+                                        <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                                    </div>
+                                    <div className="text-left">
+                                        <p className="font-semibold text-gray-900">
+                                            Excel / CSV
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                            Edytuj w Excel, LibreOffice, Google
+                                            Sheets
+                                        </p>
+                                    </div>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    className="w-full"
+                                    asChild
                                 >
-                                    <p className="font-medium text-gray-900 mb-1">
-                                        {format}
-                                    </p>
-                                    <p className="text-sm text-gray-500">
-                                        Wkrótce
-                                    </p>
-                                </Card>
-                            ))}
+                                    <a
+                                        href="/api/schedule/template/csv?year=2026"
+                                        download
+                                    >
+                                        <Download className="w-4 h-4 mr-2" />
+                                        Pobierz szablon CSV
+                                    </a>
+                                </Button>
+                            </Card>
+
+                            <Card className="p-6 rounded-xl hover:shadow-md transition-shadow">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
+                                        <FileText className="w-5 h-5 text-red-600" />
+                                    </div>
+                                    <div className="text-left">
+                                        <p className="font-semibold text-gray-900">
+                                            PDF do druku
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                            Wydrukuj i wypełnij ręcznie
+                                        </p>
+                                    </div>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    className="w-full"
+                                    asChild
+                                >
+                                    <a
+                                        href="/api/schedule/template/pdf?year=2026"
+                                        target="_blank"
+                                    >
+                                        <Download className="w-4 h-4 mr-2" />
+                                        Pobierz szablon PDF
+                                    </a>
+                                </Button>
+                            </Card>
                         </div>
+
+                        <p className="text-sm text-gray-500 mt-4">
+                            Szablony zawierają oznaczenia weekendów i miejsce na
+                            godziny pracy.
+                        </p>
                     </div>
                 </div>
             </section>
