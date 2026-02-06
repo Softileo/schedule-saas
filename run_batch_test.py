@@ -36,25 +36,39 @@ for i, seed in enumerate(seeds):
     
     try:
         start_time = time.time()
-        proc = subprocess.Popen(
-            [sys.executable, "python/test/test_advanced_scheduler.py", str(seed)],
+        popen_kwargs = dict(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             encoding='utf-8',
             errors='replace',
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+        )
+        # CREATE_NEW_PROCESS_GROUP is Windows-only
+        if sys.platform == 'win32':
+            popen_kwargs['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_kwargs['start_new_session'] = True
+
+        proc = subprocess.Popen(
+            [sys.executable, "python/test/test_advanced_scheduler.py", str(seed)],
+            **popen_kwargs
         )
         
         try:
             output, _ = proc.communicate(timeout=TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
-            # Kill the process tree on Windows
+            # Kill the process tree
             import signal
-            try:
-                proc.send_signal(signal.CTRL_BREAK_EVENT)
-            except Exception:
-                pass
+            if sys.platform == 'win32':
+                try:
+                    proc.send_signal(signal.CTRL_BREAK_EVENT)
+                except Exception:
+                    pass
+            else:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                except Exception:
+                    pass
             proc.kill()
             proc.wait(timeout=5)
             timeout_count += 1

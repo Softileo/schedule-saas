@@ -14,8 +14,9 @@ Testuje różne konfiguracje:
 import requests
 import random
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta
 import calendar
+from collections import defaultdict
 
 # ============================================================================
 # KONFIGURACJA
@@ -322,6 +323,9 @@ def generate_scenario(seed: int = None) -> dict:
                 'close': f'{close_hour:02d}:00' if close_hour > 0 else '00:00'
             }
 
+    # === PREFERENCJE PRACOWNIKÓW ===
+    preferences = _generate_preferences(employees, year, month, days_in_month, closed_weekdays)
+
     return {
         'year': year,
         'month': month,
@@ -335,7 +339,7 @@ def generate_scenario(seed: int = None) -> dict:
         },
         'shift_templates': templates,
         'employees': employees,
-        'employee_preferences': [],
+        'employee_preferences': preferences,
         'employee_absences': [],
         'scheduling_rules': {
             'max_consecutive_days': 6,
@@ -352,9 +356,65 @@ def generate_scenario(seed: int = None) -> dict:
             'trading_sundays_count': len(trading_sundays),
             'closed_days': closed_weekdays,
             'min_employees_calculated': min_employees,
-            'num_supervisors': num_supervisors
+            'num_supervisors': num_supervisors,
+            'num_preferences': len(preferences)
         }
     }
+
+
+def _generate_preferences(employees: list, year: int, month: int, 
+                          days_in_month: int, closed_weekdays: list) -> list:
+    """
+    Generuje losowe preferencje pracowników (prośby o wolne).
+    Każdy pracownik ma 10-30% szans na 1-3 prośby o wolne w miesiącu.
+    """
+    preferences = []
+    day_names_map = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    
+    for emp in employees:
+        if random.random() > 0.7:  # 30% pracowników ma preferencje
+            num_prefs = random.randint(1, 3)
+            used_dates = set()
+            for _ in range(num_prefs):
+                # Losuj dzień roboczy (nie zamknięty)
+                for _attempt in range(20):
+                    day = random.randint(1, days_in_month)
+                    d = date(year, month, day)
+                    day_str = d.strftime('%Y-%m-%d')
+                    weekday = d.weekday()
+                    if day_str in used_dates:
+                        continue
+                    if day_names_map[weekday] in closed_weekdays:
+                        continue
+                    if weekday == 6:  # niedziele pomijamy
+                        continue
+                    used_dates.add(day_str)
+                    preferences.append({
+                        'employee_id': emp['id'],
+                        'date': day_str,
+                        'preference_type': 'day_off',
+                        'priority': random.choice(['low', 'medium', 'high'])
+                    })
+                    break
+    
+    return preferences
+
+
+# ============================================================================
+# HELPER: Oblicz czas trwania zmiany w minutach
+# ============================================================================
+
+def _shift_duration_minutes(start_time: str, end_time: str) -> int:
+    """Oblicza czas trwania zmiany w minutach, obsługuje przejście przez północ."""
+    sh, sm = map(int, start_time.split(':'))
+    eh, em = map(int, end_time.split(':'))
+    start_min = sh * 60 + sm
+    end_min = eh * 60 + em
+    if end_min == 0:
+        end_min = 1440
+    if end_min <= start_min:
+        end_min += 1440
+    return end_min - start_min
 
 
 # ============================================================================
@@ -381,60 +441,57 @@ def validate_schedule(scenario: dict, result: dict) -> dict:
     # Trading sundays jako set
     trading_sunday_dates = {ts['date'] for ts in scenario.get('trading_sundays', [])}
     
-    # ========== R1: Sprawdź godziny pracowników ==========
+    # ========== R1: Sprawdź godziny pracowników (ścisła tolerancja) ==========
     hours_ok = 0
     hours_warning = 0
     hours_failed = 0
     
-    # Oblicz maksymalną długość zmiany (do ustalenia progu tolerancji)
+    # Oblicz maksymalną długość zmiany
     max_shift_hours = 8  # default
     for tmpl in templates.values():
-        start = int(tmpl['start_time'].split(':')[0]) * 60 + int(tmpl['start_time'].split(':')[1])
-        end = int(tmpl['end_time'].split(':')[0]) * 60 + int(tmpl['end_time'].split(':')[1])
-        if end == 0:
-            end = 1440
-        if end <= start:
-            end += 24 * 60
-        shift_h = (end - start) / 60
+        shift_h = _shift_duration_minutes(tmpl['start_time'], tmpl['end_time']) / 60
         max_shift_hours = max(max_shift_hours, shift_h)
     
-    # Próg tolerancji = max(8h, max_shift_duration) - bo z grubymi zmianami
-    # solver nie może idealnie trafić w target
-    hours_tolerance = max(8, max_shift_hours)
+    # Tolerancja = dokładnie 1 zmiana (solver może przydzielić jedną zmianę
+    # ponad normę, jeśli jest to konieczne dla pokrycia obsady)
+    hours_tolerance = max_shift_hours
     
     for emp_id, emp in employees.items():
         max_hours = emp.get('max_hours', 200)
-        actual_hours = 0
+        actual_minutes = 0
         
         emp_schedule = schedule.get(emp_id, {})
         for day_str, shifts in emp_schedule.items():
             for shift in shifts:
-                tmpl_id = shift.get('template_id')
-                if tmpl_id and tmpl_id in templates:
-                    tmpl = templates[tmpl_id]
-                    start = int(tmpl['start_time'].split(':')[0]) * 60 + int(tmpl['start_time'].split(':')[1])
-                    end = int(tmpl['end_time'].split(':')[0]) * 60 + int(tmpl['end_time'].split(':')[1])
-                    
-                    if end == 0:
-                        end = 1440
-                    if end <= start:
-                        end += 24 * 60
-                    
-                    actual_hours += (end - start) / 60
+                # Użyj duration_minutes z API jeśli dostępne, inaczej oblicz z szablonu
+                dur = shift.get('duration_minutes')
+                if dur:
+                    actual_minutes += dur
+                else:
+                    tmpl_id = shift.get('template_id')
+                    if tmpl_id and tmpl_id in templates:
+                        tmpl = templates[tmpl_id]
+                        actual_minutes += _shift_duration_minutes(
+                            tmpl['start_time'], tmpl['end_time']
+                        )
         
+        actual_hours = actual_minutes / 60
         emp_name = f"{emp['first_name']} {emp['last_name']}"
         
         if actual_hours > max_hours + hours_tolerance:
-            summary['failed'].append(f"R1: {emp_name} przekroczył: {actual_hours:.0f}h > {max_hours}h")
+            summary['failed'].append(
+                f"R1: {emp_name} przekroczył: {actual_hours:.1f}h > {max_hours}h "
+                f"(tolerancja {hours_tolerance:.0f}h = 1 zmiana)")
             hours_failed += 1
         elif actual_hours < max_hours * 0.3:
-            summary['warnings'].append(f"R1: {emp_name} niedociągnięcie: {actual_hours:.0f}h / {max_hours}h")
+            summary['warnings'].append(
+                f"R1: {emp_name} niedociągnięcie: {actual_hours:.1f}h / {max_hours}h")
             hours_warning += 1
         else:
             hours_ok += 1
     
     if hours_failed == 0:
-        summary['passed'].append(f"R1: Godziny OK ({hours_ok} pracowników w normie)")
+        summary['passed'].append(f"R1: Godziny OK ({hours_ok} w normie, tolerancja={hours_tolerance:.0f}h)")
     
     # ========== R2: Sprawdź pokrycie dni roboczych ==========
     uncovered = 0
@@ -468,17 +525,38 @@ def validate_schedule(scenario: dict, result: dict) -> dict:
     else:
         summary['failed'].append(f"R2: {uncovered} dni roboczych bez pokrycia")
     
-    # ========== R3: Sprawdź max 1 zmiana dziennie ==========
+    # ========== R3: Sprawdź max 1 zmiana dziennie (z obsługą zmian nocnych) ==========
     double_shifts = 0
+    double_shift_details = []
     for emp_id, emp_schedule in schedule.items():
         for day_str, shifts in emp_schedule.items():
             if len(shifts) > 1:
-                double_shifts += 1
+                # Sprawdź czy to naprawdę podwójna zmiana, czy zmiana nocna
+                # rozbita na dwa wpisy (koniec poprzedniego dnia + początek tego)
+                real_shifts = []
+                for s in shifts:
+                    start_t = s.get('start_time', '00:00')
+                    sh = int(start_t.split(':')[0])
+                    real_shifts.append(sh)
+                
+                # Jeśli więcej niż 1 zmiana zaczyna się tego samego dnia
+                # (nie liczymy kontynuacji z poprzedniego dnia: start=00:00)
+                non_midnight = [h for h in real_shifts if h > 0]
+                if len(non_midnight) > 1:
+                    double_shifts += 1
+                    emp = employees.get(emp_id, {})
+                    name = f"{emp.get('first_name', '?')} {emp.get('last_name', '?')}"
+                    double_shift_details.append(f"{name} @ {day_str} ({len(shifts)} zmian)")
+                elif len(real_shifts) > 1 and len(non_midnight) <= 1:
+                    # Prawdopodobnie zmiana nocna rozbita — OK
+                    pass
     
     if double_shifts == 0:
         summary['passed'].append("R3: Max 1 zmiana/dzień OK")
     else:
         summary['failed'].append(f"R3: {double_shifts} przypadków > 1 zmiany/dzień")
+        for d in double_shift_details[:3]:
+            summary['failed'].append(f"   -> {d}")
     
     # ========== R4: Sprawdź niedziele ==========
     sunday_violations = 0
@@ -505,53 +583,106 @@ def validate_schedule(scenario: dict, result: dict) -> dict:
     else:
         summary['failed'].append(f"R4: {sunday_violations} naruszeń logiki niedziel")
     
-    # ========== R5: Sprawdź kierowników - min 1 na dzień pracy (jeśli są kierownicy) ==========
+    # ========== R5: Sprawdź pokrycie godzin otwarcia przez kierowników ==========
     supervisor_ids = {e['id'] for e in scenario['employees'] if e.get('is_supervisor')}
     if supervisor_ids:
-        violations = 0
+        presence_violations = 0
+        coverage_gaps = 0
         days_checked = 0
         include_saturday = scenario['_meta']['include_saturday']
+        opening_hours = scenario['organization_settings'].get('opening_hours', {})
         
         for day in range(1, days_in_month + 1):
             d = date(year, month, day)
             weekday = d.weekday()
             day_str = d.strftime('%Y-%m-%d')
+            day_name = day_names_map[weekday]
             
-            # Pomiń weekendy jeśli nie są handlowe
+            # Pomiń zamknięte dni
+            if day_name in closed_days:
+                continue
             if weekday == 6 and day_str not in trading_sunday_dates:
                 continue
             if weekday == 5 and not include_saturday:
                 continue
             
+            # Pobierz godziny otwarcia dla tego dnia
+            day_oh = opening_hours.get(day_name, {})
+            if not day_oh.get('open') or not day_oh.get('close'):
+                continue
+            
+            store_open = int(day_oh['open'].split(':')[0]) * 60 + int(day_oh['open'].split(':')[1])
+            close_str = day_oh['close']
+            store_close = int(close_str.split(':')[0]) * 60 + int(close_str.split(':')[1])
+            if store_close == 0:
+                store_close = 1440
+            if store_close <= store_open:
+                store_close += 1440
+            
             # Sprawdź czy ktokolwiek pracuje tego dnia
-            anyone_working = False
-            supervisor_working = False
+            anyone_working = any(
+                day_str in schedule.get(e['id'], {}) and schedule[e['id']][day_str]
+                for e in scenario['employees']
+            )
+            if not anyone_working:
+                continue
             
-            for emp in scenario['employees']:
-                emp_id = emp['id']
-                emp_schedule = schedule.get(emp_id, {})
-                if day_str in emp_schedule and emp_schedule[day_str]:
-                    shifts_list = emp_schedule[day_str]
-                    # Obsługa różnych formatów: lista lub dict
-                    if isinstance(shifts_list, list):
-                        if len(shifts_list) > 0:
-                            anyone_working = True
-                            if emp_id in supervisor_ids:
-                                supervisor_working = True
-                    elif isinstance(shifts_list, dict):
-                        anyone_working = True
-                        if emp_id in supervisor_ids:
-                            supervisor_working = True
+            days_checked += 1
             
-            if anyone_working:
-                days_checked += 1
-                if not supervisor_working:
-                    violations += 1
+            # Zbierz przedziały godzin kierowników tego dnia
+            supervisor_intervals = []
+            for sup_id in supervisor_ids:
+                sup_schedule = schedule.get(sup_id, {})
+                if day_str in sup_schedule and sup_schedule[day_str]:
+                    for shift in (sup_schedule[day_str] if isinstance(sup_schedule[day_str], list) else [sup_schedule[day_str]]):
+                        s_time = shift.get('start_time', '00:00')
+                        e_time = shift.get('end_time', '00:00')
+                        s_min = int(s_time.split(':')[0]) * 60 + int(s_time.split(':')[1])
+                        e_min = int(e_time.split(':')[0]) * 60 + int(e_time.split(':')[1])
+                        if e_min == 0:
+                            e_min = 1440
+                        if e_min <= s_min:
+                            e_min += 1440
+                        supervisor_intervals.append((s_min, e_min))
+            
+            if not supervisor_intervals:
+                presence_violations += 1
+                continue
+            
+            # Sprawdź pokrycie godzin otwarcia przez kierowników
+            # Merge intervals i sprawdź luki
+            supervisor_intervals.sort()
+            merged = [supervisor_intervals[0]]
+            for s, e in supervisor_intervals[1:]:
+                if s <= merged[-1][1]:
+                    merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+                else:
+                    merged.append((s, e))
+            
+            # Policz minuty bez kierownika w godzinach otwarcia
+            uncovered_minutes = 0
+            cursor = store_open
+            for s, e in merged:
+                if s > cursor:
+                    uncovered_minutes += min(s, store_close) - cursor
+                cursor = max(cursor, e)
+            if cursor < store_close:
+                uncovered_minutes += store_close - cursor
+            
+            total_open_minutes = store_close - store_open
+            if uncovered_minutes > total_open_minutes * 0.5:  # >50% bez nadzoru
+                coverage_gaps += 1
         
-        if violations == 0:
-            summary['passed'].append(f"R5: Min 1 kierownik/dzień ({len(supervisor_ids)} kierowników, {days_checked} dni)")
-        else:
-            summary['warnings'].append(f"R5: {violations}/{days_checked} dni bez kierownika")
+        if presence_violations == 0 and coverage_gaps == 0:
+            summary['passed'].append(
+                f"R5: Kierownicy OK ({len(supervisor_ids)} kierowników, "
+                f"{days_checked} dni, pełne pokrycie godzin)")
+        elif presence_violations > 0:
+            summary['warnings'].append(
+                f"R5: {presence_violations}/{days_checked} dni bez kierownika")
+        if coverage_gaps > 0:
+            summary['warnings'].append(
+                f"R5: {coverage_gaps}/{days_checked} dni z >50% godzin bez nadzoru kierownika")
     
     # ========== R6: Sprawdź czy każda zmiana ma min 1 pracownika ==========
     coverage_violations = 0
@@ -588,6 +719,185 @@ def validate_schedule(scenario: dict, result: dict) -> dict:
         summary['passed'].append("R6: Coverage OK (min 1 pracownik/dzień)")
     else:
         summary['failed'].append(f"R6: {coverage_violations} dni bez pracownika!")
+    
+    # ========== R7: Max dni z rzędu (max_consecutive_days) ==========
+    rules = scenario.get('scheduling_rules', {})
+    max_consecutive = rules.get('max_consecutive_days', 6)
+    consecutive_violations = 0
+    consecutive_details = []
+    
+    for emp_id, emp in employees.items():
+        emp_schedule = schedule.get(emp_id, {})
+        emp_name = f"{emp['first_name']} {emp['last_name']}"
+        
+        # Zbierz posortowane daty pracy
+        work_dates = sorted(
+            d for d, shifts in emp_schedule.items()
+            if shifts and (isinstance(shifts, list) and len(shifts) > 0)
+        )
+        if not work_dates:
+            continue
+        
+        # Policz najdłuższą serię dni z rzędu
+        streak = 1
+        max_streak = 1
+        for i in range(1, len(work_dates)):
+            prev = datetime.strptime(work_dates[i-1], '%Y-%m-%d').date()
+            curr = datetime.strptime(work_dates[i], '%Y-%m-%d').date()
+            if (curr - prev).days == 1:
+                streak += 1
+                max_streak = max(max_streak, streak)
+            else:
+                streak = 1
+        
+        if max_streak > max_consecutive:
+            consecutive_violations += 1
+            consecutive_details.append(
+                f"{emp_name}: {max_streak} dni z rzędu (max {max_consecutive})")
+    
+    if consecutive_violations == 0:
+        summary['passed'].append(f"R7: Max {max_consecutive} dni z rzędu OK")
+    else:
+        summary['warnings'].append(
+            f"R7: {consecutive_violations} pracowników przekroczyło {max_consecutive} dni z rzędu")
+        for d in consecutive_details[:3]:
+            summary['warnings'].append(f"   -> {d}")
+    
+    # ========== R8: Min odpoczynek dobowy (min_daily_rest_hours) ==========
+    min_rest_hours = rules.get('min_daily_rest_hours', 11)
+    rest_violations = 0
+    rest_details = []
+    
+    for emp_id, emp in employees.items():
+        emp_schedule = schedule.get(emp_id, {})
+        emp_name = f"{emp['first_name']} {emp['last_name']}"
+        
+        # Zbierz wszystkie zmiany z datami i godzinami, posortowane
+        emp_shifts = []
+        for day_str, shifts in emp_schedule.items():
+            if not shifts:
+                continue
+            shift_list = shifts if isinstance(shifts, list) else [shifts]
+            for shift in shift_list:
+                s_time = shift.get('start_time', '08:00')
+                e_time = shift.get('end_time', '16:00')
+                sh, sm = map(int, s_time.split(':'))
+                eh, em = map(int, e_time.split(':'))
+                
+                shift_date = datetime.strptime(day_str, '%Y-%m-%d')
+                start_dt = shift_date.replace(hour=sh, minute=sm)
+                end_dt = shift_date.replace(hour=eh, minute=em)
+                
+                # Zmiana nocna (kończy się następnego dnia)
+                if end_dt <= start_dt:
+                    end_dt += timedelta(days=1)
+                
+                emp_shifts.append((start_dt, end_dt))
+        
+        emp_shifts.sort(key=lambda x: x[0])
+        
+        # Sprawdź odpoczynek między kolejnymi zmianami
+        for i in range(1, len(emp_shifts)):
+            prev_end = emp_shifts[i-1][1]
+            curr_start = emp_shifts[i][0]
+            rest_hours = (curr_start - prev_end).total_seconds() / 3600
+            
+            if rest_hours < min_rest_hours:
+                rest_violations += 1
+                rest_details.append(
+                    f"{emp_name}: {rest_hours:.1f}h odpoczynku "
+                    f"({prev_end.strftime('%d.%m %H:%M')}->{curr_start.strftime('%d.%m %H:%M')}, "
+                    f"min {min_rest_hours}h)")
+    
+    if rest_violations == 0:
+        summary['passed'].append(f"R8: Min {min_rest_hours}h odpoczynku dobowego OK")
+    else:
+        summary['warnings'].append(
+            f"R8: {rest_violations} naruszeń min {min_rest_hours}h odpoczynku dobowego")
+        for d in rest_details[:3]:
+            summary['warnings'].append(f"   -> {d}")
+    
+    # ========== R9: Max godzin tygodniowo (max_weekly_work_hours) ==========
+    max_weekly = rules.get('max_weekly_work_hours', 48)
+    weekly_violations = 0
+    weekly_details = []
+    
+    for emp_id, emp in employees.items():
+        emp_schedule = schedule.get(emp_id, {})
+        emp_name = f"{emp['first_name']} {emp['last_name']}"
+        
+        # Grupuj godziny wg tygodnia ISO
+        weekly_hours = defaultdict(float)
+        for day_str, shifts in emp_schedule.items():
+            if not shifts:
+                continue
+            d = datetime.strptime(day_str, '%Y-%m-%d').date()
+            iso_week = d.isocalendar()[1]
+            shift_list = shifts if isinstance(shifts, list) else [shifts]
+            for shift in shift_list:
+                dur = shift.get('duration_minutes')
+                if dur:
+                    weekly_hours[iso_week] += dur / 60
+                else:
+                    tmpl_id = shift.get('template_id')
+                    if tmpl_id and tmpl_id in templates:
+                        tmpl = templates[tmpl_id]
+                        weekly_hours[iso_week] += _shift_duration_minutes(
+                            tmpl['start_time'], tmpl['end_time']) / 60
+        
+        for week, hours in weekly_hours.items():
+            if hours > max_weekly:
+                weekly_violations += 1
+                weekly_details.append(
+                    f"{emp_name}: tydzień {week} = {hours:.1f}h (max {max_weekly}h)")
+    
+    if weekly_violations == 0:
+        summary['passed'].append(f"R9: Max {max_weekly}h/tydzień OK")
+    else:
+        summary['warnings'].append(
+            f"R9: {weekly_violations} naruszeń max {max_weekly}h/tydzień")
+        for d in weekly_details[:3]:
+            summary['warnings'].append(f"   -> {d}")
+    
+    # ========== R10: Preferencje pracowników (soft constraint) ==========
+    preferences = scenario.get('employee_preferences', [])
+    if preferences:
+        respected = 0
+        violated = 0
+        violated_details = []
+        
+        for pref in preferences:
+            emp_id = pref['employee_id']
+            pref_date = pref['date']
+            pref_type = pref.get('preference_type', 'day_off')
+            priority = pref.get('priority', 'low')
+            
+            emp = employees.get(emp_id, {})
+            emp_name = f"{emp.get('first_name', '?')} {emp.get('last_name', '?')}"
+            
+            if pref_type == 'day_off':
+                emp_schedule = schedule.get(emp_id, {})
+                has_shift = pref_date in emp_schedule and emp_schedule[pref_date]
+                if has_shift:
+                    violated += 1
+                    violated_details.append(
+                        f"{emp_name} @ {pref_date} (priorytet: {priority})")
+                else:
+                    respected += 1
+        
+        total = respected + violated
+        respect_rate = (respected / total * 100) if total > 0 else 100
+        
+        if respect_rate >= 50:
+            summary['passed'].append(
+                f"R10: Preferencje {respected}/{total} ({respect_rate:.0f}%) respektowane")
+        else:
+            summary['warnings'].append(
+                f"R10: Preferencje {respected}/{total} ({respect_rate:.0f}%) — niska skuteczność")
+        
+        if violated_details:
+            for d in violated_details[:3]:
+                summary['warnings'].append(f"   -> Zignorowano: {d}")
     
     # ========== Statystyki ==========
     summary['stats'] = {
@@ -636,7 +946,10 @@ def main(seed: int = None):
     if meta.get('closed_days'):
         print(f"   Zamknięte dni: {', '.join(meta['closed_days'])}")
     supervisors = meta.get('num_supervisors', 0)
+    num_prefs = meta.get('num_preferences', 0)
     print(f"   Pracownicy: {len(scenario['employees'])} (min. obliczone: {meta.get('min_employees_calculated', '?')}, kierowników: {supervisors})")
+    if num_prefs > 0:
+        print(f"   Preferencje: {num_prefs} próśb o wolne")
     print(f"   Szablony: {len(scenario['shift_templates'])}")
     for t in scenario['shift_templates']:
         print(f"      - {t['name']} ({t['start_time']}-{t['end_time']}) [min:{t['min_employees']}, max:{t['max_employees']}]")
