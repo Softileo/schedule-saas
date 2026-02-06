@@ -164,26 +164,27 @@ export function AIGenerateDialog({
         setLoadingText("Inicjalizacja środowiska...");
 
         // Symulacja paska postępu odzwierciedlająca kroki algorytmu
+        // Pasek nigdy się nie zatrzymuje — zwalnia asymptotycznie w kierunku 99%
         const intervalId = setInterval(() => {
             setProgress((prev) => {
-                if (prev >= 95) return prev;
-
-                // Fazy algorytmu (dopasowane do czasu trwania ~3-5s)
+                // Fazy algorytmu z płynnym zwalnianiem
                 if (prev < 20) {
                     setLoadingText("Pobieranie danych...");
                     return prev + 2;
                 } else if (prev < 40) {
                     setLoadingText("Generowanie wstępne...");
                     return prev + 1.5;
-                } else if (prev < 75) {
+                } else if (prev < 65) {
                     setLoadingText("Optymalizacja...");
                     return prev + 0.8;
-                } else if (prev < 85) {
+                } else if (prev < 80) {
                     setLoadingText("Weryfikacja reguł Kodeksu Pracy...");
-                    return prev + 0.5;
+                    return prev + 0.4;
                 } else {
                     setLoadingText("Zapisywanie grafiku...");
-                    return prev + 0.2;
+                    // Asymptotyczne zbliżanie do 99% — nigdy się nie zatrzymuje
+                    const remaining = 99 - prev;
+                    return prev + remaining * 0.02;
                 }
             });
         }, 150);
