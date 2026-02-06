@@ -29,7 +29,7 @@ const YEAR = 2026;
 const faqs = [
     {
         question: "Ile jest niedziel handlowych w 2026 roku?",
-        answer: `W 2026 roku jest 7 niedziel handlowych. Są to: ostatnia niedziela stycznia, dwie niedziele przed Wielkanocą, ostatnia niedziela czerwca, ostatnia niedziela sierpnia oraz dwie ostatnie niedziele grudnia.`,
+        answer: `W 2026 roku jest 8 niedziel handlowych. Są to: ostatnia niedziela stycznia, Niedziela Palmowa (przed Wielkanocą), ostatnia niedziela kwietnia, ostatnia niedziela czerwca, ostatnia niedziela sierpnia oraz trzy niedziele przed Wigilią w grudniu.`,
     },
     {
         question: "Kiedy jest najbliższa niedziela handlowa?",
@@ -127,7 +127,7 @@ export default function NiedzieleHandlowePage() {
                 badge={{ icon: ShoppingBag, text: "Kalendarz 2026" }}
                 title="Niedziele Handlowe"
                 titleHighlight="2026"
-                subtitle="7 niedziel handlowych w roku. Zobacz na kalendarzu kiedy sklepy będą otwarte."
+                subtitle="8 niedziel handlowych w roku. Zobacz na kalendarzu kiedy sklepy będą otwarte."
             />
 
             {/* Kalendarz roczny */}
@@ -243,7 +243,7 @@ export default function NiedzieleHandlowePage() {
             />
 
             {/* CTA */}
-            <section className="py-16">
+            <section className="pt-16">
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-3xl">
                     <CTABanner
                         title="Twórz grafiki z uwzględnieniem niedziel handlowych"
@@ -264,7 +264,8 @@ function getReasonForTradingSunday(dateStr: string): string {
     const month = date.getMonth();
 
     if (month === 0) return "Ostatnia niedziela stycznia";
-    if (month === 2 || month === 3) return "Przed Wielkanocą";
+    if (month === 2) return "Niedziela Palmowa";
+    if (month === 3) return "Ostatnia niedziela kwietnia";
     if (month === 5) return "Ostatnia niedziela czerwca";
     if (month === 7) return "Ostatnia niedziela sierpnia";
     if (month === 11) return "Grudzień przedświąteczny";

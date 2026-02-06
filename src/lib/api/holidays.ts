@@ -40,7 +40,12 @@ const POLISH_HOLIDAY_NAMES: Record<string, string> = {
 export function calculateTradingSundays(year: number): string[] {
     const tradingSundays: Set<string> = new Set();
 
-    const formatDate = (date: Date): string => date.toISOString().split("T")[0];
+    const formatDate = (date: Date): string => {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, "0");
+        const d = String(date.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+    };
 
     // Helper: Pobierz ostatnią niedzielę danego miesiąca
     const getLastSundayOfMonth = (y: number, month: number): Date => {

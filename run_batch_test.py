@@ -9,7 +9,7 @@ import os
 import time
 
 NUM_TESTS = int(sys.argv[1]) if len(sys.argv) > 1 else 20
-TIMEOUT_SECONDS = 60  # Max 60 seconds per test
+TIMEOUT_SECONDS = 40  # Max 40 seconds per test
 
 # If specific seeds provided, use them
 seeds = []
