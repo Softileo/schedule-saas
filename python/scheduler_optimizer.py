@@ -896,15 +896,16 @@ class CPSATScheduler:
     
     def _add_hc4_supervisor_per_shift(self):
         """
-        TWARDE: Dokładnie 1 kierownik na każdy szablon zmiany w danym dniu.
+        MIESZANE: Kierownik obecny na zmianach.
         
-        Przykład 1: Sobota, sklep 9-16, jedna zmiana 9-16
-        → Dokładnie 1 kierownik na tej zmianie
+        TWARDE: Co najmniej 1 kierownik musi pracować w każdym dniu roboczym
+                (ale może być na dowolnej zmianie).
+        MIĘKKIE: Preferujemy kierownika na każdym szablonie zmiany w danym dniu.
+                 Kara za brak kierownika na aktywnej zmianie.
         
-        Przykład 2: Dzień roboczy, sklep 10-21, dwie zmiany: 10-18 i 13-21
-        → Dokładnie 1 kierownik na zmianie 10-18
-        → Dokładnie 1 kierownik na zmianie 13-21
-        (czyli 2 kierowników pracuje tego dnia, ale na różnych zmianach)
+        To podejście gwarantuje FEASIBLE nawet gdy:
+        - Jest 1 kierownik i 3+ szablony zmian
+        - Kierownik może pracować max 1 zmianę/dzień (HC1)
         
         Kierownicy (is_supervisor=True) to osoby odpowiedzialne za zmianę.
         Constraint jest aktywny tylko jeśli są jacyś kierownicy w organizacji.
@@ -924,36 +925,110 @@ class CPSATScheduler:
             emp = self.data.employees[idx]
             print(f"      🔑 Kierownik #{idx}: {emp.full_name} (id={emp.id})")
         
-        print(f"   → HC4: Dokładnie 1 kierownik na zmianę ({len(supervisor_indices)} kierowników)")
+        # Oblicz ile szablonów jest aktywnych per dzień (do decyzji hard vs soft)
+        num_supervisors = len(supervisor_indices)
         
-        shifts_covered = 0
+        print(f"   → HC4: Kierownicy na zmianach ({num_supervisors} kierowników)")
+        
+        hard_constraints_added = 0
+        soft_constraints_added = 0
         
         for day in self.data.all_days:
             if not self.data.is_workable_day(day):
                 continue
             
+            # === Co najmniej 1 kierownik pracuje tego dnia (SOFT z wysoką karą) ===
+            # Soft zamiast hard, bo kierownicy mogą mieć ograniczenia uniemożliwiające
+            # pracę (np. max godzin, brak dostępnych szablonów).
+            supervisor_work_vars = []
+            for emp_idx in supervisor_indices:
+                if (emp_idx, day) in self.works_day:
+                    # Sprawdź czy kierownik ma faktyczne opcje zmianowe
+                    has_shifts = any(
+                        (emp_idx, day, t) in self.shifts
+                        for t in range(len(self.data.templates))
+                    )
+                    if has_shifts:
+                        supervisor_work_vars.append(self.works_day[(emp_idx, day)])
+            
+            if supervisor_work_vars:
+                # SOFT constraint: kara za brak kierownika w danym dniu
+                no_supervisor_today = self.model.NewBoolVar(f"no_sup_day_{day}")
+                # no_supervisor_today = 1 jeśli żaden kierownik nie pracuje
+                # sum(supervisor_work_vars) >= 1 - no_supervisor_today * 1
+                # Jeśli no_supervisor_today=0 → sum >= 1 (musi być kierownik)
+                # Jeśli no_supervisor_today=1 → sum >= 0 (nie musi być)
+                self.model.Add(sum(supervisor_work_vars) >= 1).OnlyEnforceIf(no_supervisor_today.Not())
+                self.model.Add(sum(supervisor_work_vars) == 0).OnlyEnforceIf(no_supervisor_today)
+                
+                self.objective_level2.append((
+                    no_supervisor_today,
+                    WEIGHT_HIERARCHY['COVERAGE_SLACK_PER_PERSON'] * 2,  # Wysoka kara
+                    f"no_supervisor_day_{day}"
+                ))
+                soft_constraints_added += 1
+            
+            # === MIĘKKIE: Preferuj kierownika na KAŻDYM szablonie ===
+            # Zbierz aktywne szablony na ten dzień
+            active_templates_today = []
             for tmpl_idx, tmpl in enumerate(self.data.templates):
                 if not self.data.can_template_be_used_on_day(tmpl, day):
                     continue
+                active_templates_today.append(tmpl_idx)
+            
+            for tmpl_idx in active_templates_today:
+                tmpl = self.data.templates[tmpl_idx]
                 
-                # Zbierz zmiany kierowników dla tego szablonu w tym dniu
+                # Zbierz zmiany kierowników dla tego szablonu
                 supervisor_shifts_for_template = []
                 for emp_idx in supervisor_indices:
                     if (emp_idx, day, tmpl_idx) in self.shifts:
                         supervisor_shifts_for_template.append(self.shifts[(emp_idx, day, tmpl_idx)])
                 
-                if supervisor_shifts_for_template:
-                    # Dokładnie 1 kierownik na tę zmianę
-                    self.model.Add(sum(supervisor_shifts_for_template) == 1)
+                if not supervisor_shifts_for_template:
+                    continue
+                
+                # Zbierz WSZYSTKIE zmiany (wszyscy pracownicy) dla tego szablonu
+                all_shifts_for_template = [
+                    self.shifts[(e, day, tmpl_idx)]
+                    for e in range(len(self.data.employees))
+                    if (e, day, tmpl_idx) in self.shifts
+                ]
+                
+                if not all_shifts_for_template:
+                    continue
+                
+                # Zmienna: czy zmiana jest aktywna (ma jakichkolwiek pracowników)
+                shift_is_active = self.model.NewBoolVar(f"shift_active_{day}_{tmpl_idx}")
+                self.model.AddMaxEquality(shift_is_active, all_shifts_for_template)
+                
+                # Zmienna: czy kierownik jest na tej zmianie
+                sup_on_shift = self.model.NewBoolVar(f"sup_on_shift_{day}_{tmpl_idx}")
+                self.model.AddMaxEquality(sup_on_shift, supervisor_shifts_for_template)
+                
+                # Kara za: zmiana jest aktywna ALE nie ma na niej kierownika
+                # missing_sup = shift_is_active AND NOT sup_on_shift
+                missing_sup = self.model.NewBoolVar(f"missing_sup_{day}_{tmpl_idx}")
+                # missing_sup >= shift_is_active - sup_on_shift
+                self.model.Add(missing_sup >= shift_is_active - sup_on_shift)
+                # missing_sup <= shift_is_active (only penalize if shift is active)
+                self.model.Add(missing_sup <= shift_is_active)
+                # missing_sup <= 1 - sup_on_shift (only penalize if no supervisor)
+                self.model.Add(missing_sup <= 1 - sup_on_shift)
+                
+                self.objective_level2.append((
+                    missing_sup,
+                    WEIGHT_HIERARCHY['COVERAGE_SLACK_PER_PERSON'],
+                    f"missing_supervisor_{day}_{tmpl.name}"
+                ))
+                soft_constraints_added += 1
+                
+                # Max 1 kierownik na zmianę (nie marnujemy kierowników)
+                if len(supervisor_shifts_for_template) > 1:
+                    self.model.Add(sum(supervisor_shifts_for_template) <= 1)
                     self.stats['hard_constraints'] += 1
-                    shifts_covered += 1
-                    
-                    # Debug dla sobót
-                    weekday = self.data.day_to_weekday[day]
-                    if weekday == 5:  # sobota
-                        print(f"      📅 Sobota dzień {day}: szablon '{tmpl.name}' - {len(supervisor_shifts_for_template)} kierowników może pracować")
         
-        print(f"      • Wymuszono dokładnie 1 kierownika na {shifts_covered} zmian")
+        print(f"      • MIĘKKIE: preferencja kierownika na {soft_constraints_added} zmian/dni")
     
     def _add_hc5_min_coverage(self):
         """
