@@ -86,7 +86,7 @@ export async function generateMetadata({
         return generateMonthPageMetadata(
             monthConfig.monthName,
             monthConfig.year,
-            slug
+            slug,
         );
     }
 
@@ -97,7 +97,7 @@ export async function generateMetadata({
             industryConfig.name,
             slug,
             industryConfig.description,
-            industryConfig.keywords
+            industryConfig.keywords,
         );
     }
 
@@ -131,7 +131,7 @@ const getIndustryFAQs = (name: string, challenges: string[]) => [
         answer: `Tworzenie grafiku dla branży ${name.toLowerCase()} wymaga uwzględnienia specyficznych wyzwań: ${challenges
             .slice(0, 2)
             .join(
-                ", "
+                ", ",
             )}. Najłatwiej użyć automatycznego generatora, który uwzględni te aspekty.`,
     },
     {
@@ -187,7 +187,7 @@ async function MonthPage({
         config.year,
         config.month,
         holidays,
-        8
+        8,
     );
 
     const currentIndex = MONTH_PAGES_2026.findIndex((m) => m.slug === slug);
@@ -218,7 +218,7 @@ async function MonthPage({
                         config.title,
                         config.description,
                         `https://calenda.pl/grafik-pracy/${slug}`,
-                        "2026-01-01"
+                        "2026-01-01",
                     ),
                     generateBreadcrumbSchema(breadcrumbItems),
                 ]}
@@ -288,7 +288,7 @@ async function MonthPage({
                                         </span>
                                         <Badge variant="secondary">
                                             {new Date(
-                                                holiday.date
+                                                holiday.date,
                                             ).toLocaleDateString("pl-PL", {
                                                 day: "numeric",
                                                 month: "long",
@@ -334,13 +334,23 @@ async function MonthPage({
                             Pobierz szablon grafiku
                         </h3>
                         <div className="flex flex-wrap justify-center gap-4">
-                            <Button variant="outline" disabled>
-                                <Download className="w-4 h-4 mr-2" />
-                                PDF (wkrótce)
+                            <Button variant="outline" asChild>
+                                <a
+                                    href={`/api/schedule/template/pdf?year=${config.year}&month=${config.month}&employees=10`}
+                                    target="_blank"
+                                >
+                                    <Download className="w-4 h-4 mr-2" />
+                                    Pobierz PDF
+                                </a>
                             </Button>
-                            <Button variant="outline" disabled>
-                                <Download className="w-4 h-4 mr-2" />
-                                Excel (wkrótce)
+                            <Button variant="outline" asChild>
+                                <a
+                                    href={`/api/schedule/template/csv?year=${config.year}&month=${config.month}&employees=10`}
+                                    download
+                                >
+                                    <Download className="w-4 h-4 mr-2" />
+                                    Pobierz Excel (CSV)
+                                </a>
                             </Button>
                         </div>
                     </div>
@@ -380,7 +390,7 @@ function IndustryPage({
     const howToSteps = getHowToSteps(config.name);
     const otherIndustries = INDUSTRY_PAGES.filter((i) => i.slug !== slug).slice(
         0,
-        4
+        4,
     );
     const breadcrumbItems = [
         { name: "Strona główna", url: "https://calenda.pl" },
@@ -397,14 +407,14 @@ function IndustryPage({
                         config.title,
                         config.description,
                         `https://calenda.pl/grafik-pracy/${slug}`,
-                        "2026-01-01"
+                        "2026-01-01",
                     ),
                     generateBreadcrumbSchema(breadcrumbItems),
                     generateHowToSchema(
                         `Jak stworzyć grafik pracy dla ${config.name.toLowerCase()}`,
                         config.description,
                         howToSteps,
-                        "PT15M"
+                        "PT15M",
                     ),
                 ]}
             />
@@ -566,16 +576,28 @@ function IndustryPage({
                                 <Button
                                     variant="secondary"
                                     className="bg-white text-blue-600 hover:bg-blue-50"
+                                    asChild
                                 >
-                                    <Download className="w-4 h-4 mr-2" />
-                                    Pobierz Excel
+                                    <a
+                                        href="/api/schedule/template/csv?year=2026&employees=10"
+                                        download
+                                    >
+                                        <Download className="w-4 h-4 mr-2" />
+                                        Pobierz Excel (CSV)
+                                    </a>
                                 </Button>
                                 <Button
                                     variant="secondary"
                                     className="bg-white/10 text-white hover:bg-white/20 border-white/20"
+                                    asChild
                                 >
-                                    <Download className="w-4 h-4 mr-2" />
-                                    Pobierz PDF
+                                    <a
+                                        href="/api/schedule/template/pdf?year=2026&employees=10"
+                                        target="_blank"
+                                    >
+                                        <Download className="w-4 h-4 mr-2" />
+                                        Pobierz PDF
+                                    </a>
                                 </Button>
                             </div>
                         </Card>
