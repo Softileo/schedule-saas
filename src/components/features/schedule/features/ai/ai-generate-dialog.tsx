@@ -227,17 +227,17 @@ export function AIGenerateDialog({
                         const missingHours = required - available;
                         const missingEmployees = Math.ceil(missingHours / 160); // ~160h/miesiąc per pracownik
 
-                        let userMessage = `🚫 Nie można wygenerować grafiku\n\n`;
-                        userMessage += `Masz za mało pracowników na ten miesiąc.\n\n`;
-                        userMessage += `📊 Sytuacja:\n`;
-                        userMessage += `• Dostępne godziny: ${available}h\n`;
-                        userMessage += `• Potrzebne godziny: ${required}h\n`;
-                        userMessage += `• Brakuje: ${missingHours}h (~${missingEmployees} pracowników)\n\n`;
-                        userMessage += `💡 Co możesz zrobić:\n\n`;
-                        userMessage += `1️⃣ Dodaj więcej pracowników w zakładce "Pracownicy"\n`;
-                        userMessage += `2️⃣ Zmniejsz "Min. pracowników" w szablonach zmian\n`;
-                        userMessage += `3️⃣ Usuń niepotrzebne szablony zmian\n`;
-                        userMessage += `4️⃣ Skróć godziny otwarcia w Ustawieniach`;
+                        let userMessage = `Nie można wygenerować grafiku`;
+                        userMessage += `Masz za mało pracowników na ten miesiąc.`;
+                        userMessage += `Sytuacja:`;
+                        userMessage += `Dostępne godziny: ${available}h`;
+                        userMessage += `Potrzebne godziny: ${required}h`;
+                        userMessage += `Brakuje: ${missingHours}h (~${missingEmployees} pracowników)`;
+                        userMessage += `Co możesz zrobić:`;
+                        userMessage += `Dodaj więcej pracowników w zakładce "Pracownicy"`;
+                        userMessage += `Zmniejsz "Min. pracowników" w szablonach zmian`;
+                        userMessage += `Usuń niepotrzebne szablony zmian`;
+                        userMessage += `Skróć godziny otwarcia w Ustawieniach`;
 
                         throw new Error(userMessage);
                     }
@@ -380,10 +380,10 @@ export function AIGenerateDialog({
 
                 {/* Step: Limit Check */}
                 {step === "limit-check" && (
-                    <div className="flex flex-col items-center justify-center py-12 px-8 space-y-6">
+                    <div className="flex flex-col items-center justify-center py-12 px-3 space-y-6">
                         {aiUsage.loading ? (
                             <>
-                                <GoogleSpinnerSVG size={48} stroke={3} />
+                                <GoogleSpinnerSVG size={56} stroke={3} />
                                 <p className="text-sm text-slate-600">
                                     Sprawdzanie limitów AI...
                                 </p>
@@ -428,7 +428,7 @@ export function AIGenerateDialog({
                         ) : (
                             <>
                                 <div className="p-4 bg-violet-50 rounded-full">
-                                    <Sparkles className="h-12 w-12 text-violet-600" />
+                                    <Sparkles className="h-12 w-12 text-blue-600" />
                                 </div>
                                 <div className="text-center space-y-2">
                                     <h3 className="text-lg font-semibold text-slate-900">

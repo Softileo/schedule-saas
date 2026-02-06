@@ -81,7 +81,7 @@ WEIGHT_HIERARCHY = {
     'MAX_WEEKLY_HOURS_VIOLATION': 100,          # >48h/tydzień
     
     # POZIOM 4: PREFERENCJE I SPRAWIEDLIWOŚĆ (100 pkt)
-    'PREFERENCE_MATCH_BONUS': 100,                 # Bonus za zgodność
+    'PREFERENCE_MATCH_BONUS': 110,                 # Bonus za zgodność
     'AVOIDED_DAY_PENALTY': 100,                    # Kara za niechciany dzień
     'WEEKEND_FAIRNESS_PENALTY': 200,               # Sprawiedliwe weekendy
     'SHIFT_DISTRIBUTION_PENALTY': 150,             # Równy rozkład zmian
