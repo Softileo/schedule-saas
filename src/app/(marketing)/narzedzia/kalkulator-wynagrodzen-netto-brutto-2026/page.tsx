@@ -71,7 +71,7 @@ const KOSZTY_PODSTAWOWE = 250;
 const KOSZTY_PODWYZSZONE = 300;
 
 // Roczny limit podstawy składek emerytalno-rentowych (30× prognozowane przeciętne wynagrodzenie)
-const ZUS_ANNUAL_CAP = 287910;
+const ZUS_ANNUAL_CAP = 282600;
 
 // Stawki pracodawcy
 const EMPLOYER_RENTOWE = 0.065;
@@ -290,15 +290,8 @@ function calculateSalary(
             podatek = podProgu + nadProg;
         }
 
-        // Odlicz kwotę zmniejszającą - ale tylko jeśli przysługuje
-        // Kwota zmniejszająca przysługuje dla dochodów rocznych do 120 000 zł
-        // W kalkulatorze miesięcznym zakładamy, że jeśli podstawa opodatkowania
-        // przekracza próg miesięczny (10000 zł), to roczny dochód przekroczy limit
-        const kwotaZmniejszajacaLimit = TAX_REDUCTION_INCOME_LIMIT / 12; // 10 000 zł miesięcznie
-        const kwotaZmniejszajaca =
-            podstawaOpodatkowania <= kwotaZmniejszajacaLimit
-                ? TAX_REDUCTION_AMOUNT
-                : 0;
+        // Kwota zmniejszająca podatek - 300 zł miesięcznie (PIT-2)
+        const kwotaZmniejszajaca = TAX_REDUCTION_AMOUNT;
 
         zaliczkaPodatek = Math.max(0, Math.round(podatek - kwotaZmniejszajaca));
     }
@@ -346,8 +339,106 @@ function calculateSalary(
 }
 
 // =============================================================================
-// MONTHLY BREAKDOWN FUNCTIONS
+// MONTHLY BREAKDOWN FUNCTIONS (CUMULATIVE TRACKING)
 // =============================================================================
+
+interface CumulativeState {
+    brutto: number;
+    taxBase: number;
+}
+
+function calculateOneMonthEmployee(
+    brutto: number,
+    cumState: CumulativeState,
+    kosztyPodwyzszone: boolean,
+    ulga26: boolean,
+    ppk: boolean,
+    ppkRate: number,
+    contractType: ContractType,
+): { row: MonthlyEmployeeRow; newCumState: CumulativeState } {
+    const prevCumBrutto = cumState.brutto;
+    const newCumBrutto = prevCumBrutto + brutto;
+
+    let emerytalne = 0;
+    let rentowe = 0;
+    let chorobowe = 0;
+
+    if (contractType === "employment" || contractType === "contract") {
+        if (prevCumBrutto >= ZUS_ANNUAL_CAP) {
+            emerytalne = 0;
+            rentowe = 0;
+        } else if (newCumBrutto > ZUS_ANNUAL_CAP) {
+            const basis = ZUS_ANNUAL_CAP - prevCumBrutto;
+            emerytalne = round2(basis * ZUS_EMERYTALNE);
+            rentowe = round2(basis * ZUS_RENTOWE);
+        } else {
+            emerytalne = round2(brutto * ZUS_EMERYTALNE);
+            rentowe = round2(brutto * ZUS_RENTOWE);
+        }
+        if (contractType === "employment") {
+            chorobowe = round2(brutto * ZUS_CHOROBOWE);
+        }
+    }
+
+    const sumaSkladek = round2(emerytalne + rentowe + chorobowe);
+    const ppkPracownik = ppk ? round2(brutto * ppkRate) : 0;
+    const podstawaZdrowotne = round2(brutto - sumaSkladek);
+    const zdrowotne =
+        contractType === "work-agreement"
+            ? 0
+            : round2(podstawaZdrowotne * ZUS_ZDROWOTNE);
+
+    const koszty = kosztyPodwyzszone ? KOSZTY_PODWYZSZONE : KOSZTY_PODSTAWOWE;
+    const podstawaOpodatkowania = Math.max(
+        0,
+        Math.round(brutto - sumaSkladek - koszty),
+    );
+
+    let zaliczka = 0;
+    if (!ulga26) {
+        const prevCumTaxBase = cumState.taxBase;
+        const newCumTaxBase = prevCumTaxBase + podstawaOpodatkowania;
+
+        let podatek = 0;
+        if (prevCumTaxBase >= TAX_THRESHOLD) {
+            // Cały miesiąc w II progu
+            podatek = podstawaOpodatkowania * TAX_RATE_2;
+        } else if (newCumTaxBase > TAX_THRESHOLD) {
+            // Miesiąc przekracza próg
+            const inFirst = TAX_THRESHOLD - prevCumTaxBase;
+            const inSecond = podstawaOpodatkowania - inFirst;
+            podatek = inFirst * TAX_RATE_1 + inSecond * TAX_RATE_2;
+        } else {
+            // Cały miesiąc w I progu
+            podatek = podstawaOpodatkowania * TAX_RATE_1;
+        }
+
+        // Kwota zmniejszająca podatek - 300 zł miesięcznie (PIT-2)
+        zaliczka = Math.max(0, Math.round(podatek - TAX_REDUCTION_AMOUNT));
+    }
+
+    const netto = round2(
+        brutto - sumaSkladek - zdrowotne - zaliczka - ppkPracownik,
+    );
+
+    return {
+        row: {
+            month: "",
+            brutto: round2(brutto),
+            emerytalne,
+            rentowe,
+            chorobowe,
+            zdrowotne,
+            zaliczka,
+            ppk: ppkPracownik,
+            netto,
+        },
+        newCumState: {
+            brutto: newCumBrutto,
+            taxBase: cumState.taxBase + podstawaOpodatkowania,
+        },
+    };
+}
 
 function calculateMonthlyEmployee(
     monthlyBrutto: number,
@@ -358,91 +449,87 @@ function calculateMonthlyEmployee(
     contractType: ContractType,
 ): MonthlyEmployeeRow[] {
     const rows: MonthlyEmployeeRow[] = [];
-    let cumulativeBrutto = 0;
+    let cumState: CumulativeState = { brutto: 0, taxBase: 0 };
 
     for (let i = 0; i < 12; i++) {
-        const brutto = monthlyBrutto;
-        const prevCumBrutto = cumulativeBrutto;
-        cumulativeBrutto += brutto;
+        const { row, newCumState } = calculateOneMonthEmployee(
+            monthlyBrutto,
+            cumState,
+            kosztyPodwyzszone,
+            ulga26,
+            ppk,
+            ppkRate,
+            contractType,
+        );
+        row.month = MONTHS_PL[i];
+        rows.push(row);
+        cumState = newCumState;
+    }
 
-        let emerytalne = 0;
-        let rentowe = 0;
-        let chorobowe = 0;
+    return rows;
+}
 
-        if (contractType === "employment" || contractType === "contract") {
-            if (prevCumBrutto >= ZUS_ANNUAL_CAP) {
-                emerytalne = 0;
-                rentowe = 0;
-            } else if (cumulativeBrutto > ZUS_ANNUAL_CAP) {
-                const basis = ZUS_ANNUAL_CAP - prevCumBrutto;
-                emerytalne = round2(basis * ZUS_EMERYTALNE);
-                rentowe = round2(basis * ZUS_RENTOWE);
-            } else {
-                emerytalne = round2(brutto * ZUS_EMERYTALNE);
-                rentowe = round2(brutto * ZUS_RENTOWE);
-            }
-            if (contractType === "employment") {
-                chorobowe = round2(brutto * ZUS_CHOROBOWE);
-            }
+function calculateMonthlyFromNetto(
+    targetNetto: number,
+    kosztyPodwyzszone: boolean,
+    ulga26: boolean,
+    ppk: boolean,
+    ppkRate: number,
+    contractType: ContractType,
+): MonthlyEmployeeRow[] {
+    const rows: MonthlyEmployeeRow[] = [];
+    let cumState: CumulativeState = { brutto: 0, taxBase: 0 };
+
+    for (let i = 0; i < 12; i++) {
+        // Iteracyjne szukanie brutto dla danego netto
+        let bruttoEst = targetNetto * 1.5;
+
+        for (let iter = 0; iter < 100; iter++) {
+            const { row } = calculateOneMonthEmployee(
+                bruttoEst,
+                cumState,
+                kosztyPodwyzszone,
+                ulga26,
+                ppk,
+                ppkRate,
+                contractType,
+            );
+            const diff = row.netto - targetNetto;
+            if (Math.abs(diff) < 0.01) break;
+            bruttoEst -= diff * 0.75;
         }
 
-        const sumaSkladek = round2(emerytalne + rentowe + chorobowe);
-        const ppkPracownik = ppk ? round2(brutto * ppkRate) : 0;
-        const podstawaZdrowotne = round2(brutto - sumaSkladek);
-        const zdrowotne =
-            contractType === "work-agreement"
-                ? 0
-                : round2(podstawaZdrowotne * ZUS_ZDROWOTNE);
-
-        const koszty = kosztyPodwyzszone
-            ? KOSZTY_PODWYZSZONE
-            : KOSZTY_PODSTAWOWE;
-        const podstawaOpodatkowania = Math.max(
-            0,
-            Math.round(brutto - sumaSkladek - koszty),
+        const { row, newCumState } = calculateOneMonthEmployee(
+            bruttoEst,
+            cumState,
+            kosztyPodwyzszone,
+            ulga26,
+            ppk,
+            ppkRate,
+            contractType,
         );
-
-        let zaliczka = 0;
-        if (!ulga26) {
-            const progMiesieczny = TAX_THRESHOLD / 12;
-            let podatek = 0;
-            if (podstawaOpodatkowania <= progMiesieczny) {
-                podatek = podstawaOpodatkowania * TAX_RATE_1;
-            } else {
-                podatek =
-                    progMiesieczny * TAX_RATE_1 +
-                    (podstawaOpodatkowania - progMiesieczny) * TAX_RATE_2;
-            }
-            const kwotaZmniejszajacaLimit = TAX_REDUCTION_INCOME_LIMIT / 12;
-            const kwotaZmniejszajaca =
-                podstawaOpodatkowania <= kwotaZmniejszajacaLimit
-                    ? TAX_REDUCTION_AMOUNT
-                    : 0;
-            zaliczka = Math.max(0, Math.round(podatek - kwotaZmniejszajaca));
-        }
-
-        const netto = round2(
-            brutto - sumaSkladek - zdrowotne - zaliczka - ppkPracownik,
+        row.month = MONTHS_PL[i];
+        row.brutto = round2(bruttoEst);
+        // Przelicz netto z zaokrąglonym brutto
+        const finalCalc = calculateOneMonthEmployee(
+            row.brutto,
+            cumState,
+            kosztyPodwyzszone,
+            ulga26,
+            ppk,
+            ppkRate,
+            contractType,
         );
-
-        rows.push({
-            month: MONTHS_PL[i],
-            brutto,
-            emerytalne,
-            rentowe,
-            chorobowe,
-            zdrowotne,
-            zaliczka,
-            ppk: ppkPracownik,
-            netto,
-        });
+        finalCalc.row.month = MONTHS_PL[i];
+        rows.push(finalCalc.row);
+        cumState = finalCalc.newCumState;
     }
 
     return rows;
 }
 
 function calculateMonthlyEmployer(
-    monthlyBrutto: number,
+    monthlyBruttos: number[],
     ppk: boolean,
     contractType: ContractType,
 ): MonthlyEmployerRow[] {
@@ -450,7 +537,7 @@ function calculateMonthlyEmployer(
     let cumulativeBrutto = 0;
 
     for (let i = 0; i < 12; i++) {
-        const brutto = monthlyBrutto;
+        const brutto = monthlyBruttos[i] || 0;
         const prevCumBrutto = cumulativeBrutto;
         cumulativeBrutto += brutto;
 
@@ -549,22 +636,45 @@ export default function KalkulatorWynagrodzenPage() {
         [bruttoNum, kosztyPodwyzszone, ulga26, ppk, ppkRate, contractType],
     );
 
-    const monthlyEmployee = useMemo(
-        () =>
-            calculateMonthlyEmployee(
+    const monthlyEmployee = useMemo(() => {
+        if (mode === "brutto-to-netto") {
+            return calculateMonthlyEmployee(
                 bruttoNum,
                 kosztyPodwyzszone,
                 ulga26,
                 ppk,
                 parseFloat(ppkRate),
                 contractType,
-            ),
-        [bruttoNum, kosztyPodwyzszone, ulga26, ppk, ppkRate, contractType],
-    );
+            );
+        } else {
+            return calculateMonthlyFromNetto(
+                inputNum,
+                kosztyPodwyzszone,
+                ulga26,
+                ppk,
+                parseFloat(ppkRate),
+                contractType,
+            );
+        }
+    }, [
+        mode,
+        inputNum,
+        bruttoNum,
+        kosztyPodwyzszone,
+        ulga26,
+        ppk,
+        ppkRate,
+        contractType,
+    ]);
 
     const monthlyEmployer = useMemo(
-        () => calculateMonthlyEmployer(bruttoNum, ppk, contractType),
-        [bruttoNum, ppk, contractType],
+        () =>
+            calculateMonthlyEmployer(
+                monthlyEmployee.map((r) => r.brutto),
+                ppk,
+                contractType,
+            ),
+        [monthlyEmployee, ppk, contractType],
     );
 
     const employeeTotals = useMemo(() => {
@@ -1505,6 +1615,519 @@ export default function KalkulatorWynagrodzenPage() {
                                 </p>
                             </div>
                         </Card>
+                    </div>
+                </div>
+            </section>
+
+            {/* Poradnik - treści edukacyjne */}
+            <section className="py-16 bg-white">
+                <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="max-w-4xl mx-auto">
+                        <h2 className="text-2xl font-bold text-gray-900 mb-10 text-center">
+                            Poradnik:{" "}
+                            <span className="bg-linear-to-r from-blue-600 to-violet-500 bg-clip-text text-transparent">
+                                Kalkulator wynagrodzeń
+                            </span>
+                        </h2>
+
+                        <div className="space-y-10 text-gray-700 leading-relaxed text-[15px]">
+                            {/* Czym jest kalkulator */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Czym jest kalkulator wynagrodzeń brutto
+                                    netto?
+                                </h3>
+                                <p>
+                                    Kalkulator wynagrodzeń brutto netto jest
+                                    narzędziem pozwalającym obliczyć wysokość
+                                    miesięcznej pensji dla określonych
+                                    parametrów. Dzięki temu dowiemy się, jaką
+                                    konkretnie kwotę otrzymamy każdego miesiąca
+                                    &quot;na rękę&quot;. Kalkulator wynagrodzeń
+                                    brutto netto przygotowany został z myślą o
+                                    pracownikach i pracodawcach. Ci pierwsi mogą
+                                    sprawdzić, jak wysokość wynagrodzenia brutto
+                                    netto będzie kształtować się każdego
+                                    miesiąca oraz w ujęciu rocznym. Pracodawcy
+                                    natomiast mogą dokładnie określić, jakie
+                                    dodatkowe składki muszą doliczyć do płacy
+                                    brutto z uwzględnieniem różnych form
+                                    zatrudnienia.
+                                </p>
+                                <p className="mt-3">
+                                    Przeliczając nasze wynagrodzenie z kwoty
+                                    brutto na kwotę netto dowiemy się dokładnie,
+                                    ile wynosi składka rentowa, składka
+                                    chorobowa, składka zdrowotna i emerytalna
+                                    oraz zaliczka na podatek dochodowy. Jeśli
+                                    korzystamy z Pracowniczych Planów
+                                    Kapitałowych (PPK), kalkulator obliczy
+                                    również zmniejszenia z tego tytułu. Z kolei
+                                    pracodawcy mogą sprawdzić dokładne
+                                    obciążenia płacy brutto wynikające z
+                                    konieczności naliczenia składki emerytalnej,
+                                    składki rentowej, składki wypadkowej,
+                                    składki na Fundusz Pracy (FP), składki na
+                                    Fundusz Gwarantowanych Świadczeń
+                                    Pracowniczych (FGŚP). Kalkulator wynagrodzeń
+                                    zwraca również koszt PPK po stronie
+                                    pracodawcy.
+                                </p>
+                            </div>
+
+                            {/* Brutto i netto */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Wynagrodzenie brutto i netto - co oznacza?
+                                </h3>
+                                <p>
+                                    Podejmując się pracy i skupiając się na
+                                    kwestiach zarobkowych najbardziej interesuje
+                                    nas, jaka kwota wpłynie każdego miesiąca na
+                                    nasze konto bankowe. W trakcie rozmów o
+                                    pracę rekruterzy najczęściej operują kwotami
+                                    brutto, które są wyraźnie wyższe, niż suma,
+                                    którą otrzymamy za wykonaną pracę.
+                                </p>
+                                <div className="mt-4 space-y-3">
+                                    <Card className="p-4 rounded-lg border-blue-100 bg-blue-50/50">
+                                        <p>
+                                            <strong className="text-blue-800">
+                                                Wynagrodzenie brutto
+                                            </strong>{" "}
+                                            - to wynagrodzenie zawierające
+                                            podatek dochodowy oraz pozostałe
+                                            składki, których liczba i kwota
+                                            zależy od podstawy zatrudnienia.
+                                            Wynagrodzenie brutto najczęściej
+                                            pojawia się w ogłoszeniach o pracę
+                                            czy zapisywane jest w umowie
+                                            zawartej z pracodawcą.
+                                        </p>
+                                    </Card>
+                                    <Card className="p-4 rounded-lg border-emerald-100 bg-emerald-50/50">
+                                        <p>
+                                            <strong className="text-emerald-800">
+                                                Wynagrodzenie netto
+                                            </strong>{" "}
+                                            - jest to kwota do naszej
+                                            dyspozycji, którą otrzymujemy po
+                                            uwzględnieniu wszystkich obciążeń,
+                                            jak składki ZUS i zaliczka na
+                                            podatek dochodowy od osób
+                                            fizycznych. Liczba i rodzaj potrąceń
+                                            wynika m.in. z rodzaju zawartej
+                                            umowy.
+                                        </p>
+                                    </Card>
+                                </div>
+                            </div>
+
+                            {/* Jak działa kalkulator */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Jak działa kalkulator wynagrodzeń?
+                                </h3>
+                                <p>
+                                    Kalkulator wynagrodzeń pozwala przeliczyć
+                                    zarobki netto brutto oraz koszty pracodawcy
+                                    na podstawie szeregu kluczowych parametrów.
+                                    W pierwszej kolejności trzeba określić, w
+                                    jakim roku podatkowym otrzymywaliśmy lub
+                                    otrzymujemy wynagrodzenie. To ważne,
+                                    ponieważ z uwagi na zmieniające się przepisy
+                                    kwoty potrąceń mogą się od siebie różnić.
+                                </p>
+                                <p className="mt-3">
+                                    Kalkulator wynagrodzeń pozwala również
+                                    przeprowadzać obliczenia na podstawie kwot
+                                    brutto i netto. Jest to przydatne np. w
+                                    sytuacji, kiedy wiemy ile chcemy zarabiać
+                                    każdego miesiąca na rękę, ale nie mamy
+                                    pojęcia, jaka to kwota brutto. Kolejnym
+                                    etapem jest określenie, z jakiej tytułu
+                                    umowy pobieramy wynagrodzenie. Do wyboru
+                                    jest umowa o pracę, umowa o dzieło i umowa
+                                    zlecenie. Wybór każdej z opcji wpływa na
+                                    zmiany w pobranych składkach i zaliczkach na
+                                    podatek dochodowy.
+                                </p>
+                            </div>
+
+                            {/* Umowa o pracę */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Kalkulator wynagrodzeń - zatrudnienie
+                                    tytułem umowy o pracę
+                                </h3>
+                                <p>
+                                    Dla umowy o pracę możemy wziąć pod uwagę np.
+                                    kwotę wolną od podatku, pracę poza miejscem
+                                    zamieszkania, PPK, autorskie koszty
+                                    uzyskania przychodu, ulgę na powrót, ulgę
+                                    dla rodzin 4+, ulgę dla osób do 26 roku
+                                    życia. Bez problemu możemy sprawdzić również
+                                    koszty pracodawcy, na które oprócz składek
+                                    na ubezpieczenia społeczne wpływają także
+                                    składki na Fundusz Pracy i FGŚP.
+                                </p>
+                            </div>
+
+                            {/* Umowa zlecenie */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Kalkulator wynagrodzeń - praca na umowę
+                                    zlecenie
+                                </h3>
+                                <p>
+                                    W przypadku umowy zlecenie możemy
+                                    doprecyzować formę zatrudnienia. Każda z
+                                    opcji może wpływać na wysokość składek i
+                                    kwotę zaliczki na podatek dochodowy. Możemy
+                                    również określić czy jesteśmy w&nbsp;wieku
+                                    poniżej 26 lat, co związane jest ze
+                                    skorzystaniem z ulgi dla młodych, którzy
+                                    osiągają w roku podatkowym dochody nie
+                                    wyższe niż 85&nbsp;528 zł rocznie.
+                                </p>
+                            </div>
+
+                            {/* Umowa o dzieło */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Kalkulator wynagrodzeń - praca na umowę o
+                                    dzieło
+                                </h3>
+                                <p>
+                                    Kalkulator płac pozwala także oszacować
+                                    wynagrodzenie netto lub wynagrodzenie brutto
+                                    w sytuacji, kiedy osiągamy dochody na
+                                    podstawie umowy o dzieło. W tym wariancie
+                                    mamy możliwość wskazania, że jesteśmy
+                                    zatrudnieni na podstawie umowy o dzieło u
+                                    obecnego pracodawcy, co skutkować będzie
+                                    naliczeniem składki emerytalnej, rentowej,
+                                    chorobowej i składki zdrowotnej.
+                                </p>
+                            </div>
+
+                            {/* Jak obliczyć brutto z netto */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Jak obliczyć wynagrodzenie brutto znając
+                                    kwotę netto?
+                                </h3>
+                                <p>
+                                    Aby obliczyć, o jaką kwotę nasze miesięczne
+                                    wynagrodzenie brutto będzie wyższe niż
+                                    miesięczne zarobki netto, należy powiększyć
+                                    je o odpowiednie składki ZUS i zaliczkę na
+                                    podatek dochodowy od osób fizycznych. Rodzaj
+                                    składek zależy m.in. od podstawy
+                                    zatrudnienia, naszego wieku czy zarobionej
+                                    kwoty.
+                                </p>
+                                <Card className="mt-4 p-4 rounded-lg">
+                                    <h4 className="font-semibold text-gray-900 mb-3 text-sm">
+                                        Składki ZUS - pracownik
+                                    </h4>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex justify-between">
+                                            <span>Emerytalna</span>
+                                            <span className="font-medium">
+                                                9,76% (od wynagrodzenia brutto)
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Rentowa</span>
+                                            <span className="font-medium">
+                                                1,50% (od wynagrodzenia brutto)
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Chorobowa</span>
+                                            <span className="font-medium">
+                                                2,45% (od wynagrodzenia brutto)
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Zdrowotna</span>
+                                            <span className="font-medium">
+                                                9,00% (od podstawy wymiaru)
+                                            </span>
+                                        </div>
+                                    </div>
+                                </Card>
+                            </div>
+
+                            {/* Wpływ rodzaju umowy */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Jak rodzaj umowy wpływa na wynagrodzenie
+                                    brutto i netto?
+                                </h3>
+                                <p>
+                                    Jednym z kluczowych elementów wpływających
+                                    na różnicę pomiędzy kwotą wynagrodzenia
+                                    brutto i netto jest podstawa zatrudnienia. W
+                                    przypadku umowy o pracę wynagrodzenie
+                                    pomniejszane jest o składkę zdrowotną,
+                                    emerytalną, rentową, chorobową oraz zaliczkę
+                                    na podatek dochodowy.
+                                </p>
+                                <p className="mt-3">
+                                    Jeśli jesteśmy zatrudnieni na podstawie
+                                    umowy zlecenia i jest nasza jedyna umowa, to
+                                    pobierane są składki ZUS na ubezpieczenie
+                                    społeczne i zdrowotne. Natomiast pracodawcę
+                                    obciążają składki na FGŚP oraz Fundusz
+                                    Pracy.
+                                </p>
+                                <p className="mt-3">
+                                    Sytuacja wygląda inaczej, kiedy jesteśmy
+                                    zatrudnieni na podstawie umowy o dzieło.
+                                    Jeśli kontrakt nie jest podpisany z
+                                    dotychczasowym pracodawcą, to jedynym
+                                    czynnikiem zmniejszającym płacę brutto jest
+                                    zaliczka na podatek dochodowy od osób
+                                    fizycznych.
+                                </p>
+                            </div>
+
+                            {/* Podatek dochodowy */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Jak wysokość wynagrodzenia wpływa na podatek
+                                    dochodowy?
+                                </h3>
+                                <p>
+                                    Aktualnie w Polsce podatek dochodowy od osób
+                                    fizycznych pobierany jest według dwóch
+                                    stawek. Pierwszy próg podatkowy obowiązuje
+                                    do kwoty dochodów nie wyższej niż
+                                    120&nbsp;000&nbsp;zł rocznie, a danina
+                                    naliczana jest według stawki 12%. Drugi próg
+                                    podatkowy zaczyna się od dochodów powyżej
+                                    120&nbsp;000&nbsp;zł rocznie, które
+                                    opodatkowane są stawką 32% (tylko nadwyżka
+                                    ponad wskazaną kwotę). Ostatni próg
+                                    podatkowy wyznacza tzw. danina
+                                    solidarnościowa obejmująca podatników,
+                                    których roczne dochody przekroczyły
+                                    1&nbsp;mln&nbsp;zł (stawka 4%).
+                                </p>
+                            </div>
+
+                            {/* Zerowy PIT */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Zerowy PIT dla młodych - na czym polega?
+                                </h3>
+                                <p>
+                                    Od 1 sierpnia 2019 roku ustawodawca
+                                    wprowadził ulgę &quot;zerowy PIT dla
+                                    młodych&quot;. Osoby do 26 roku życia nie
+                                    płacą podatku dochodowego od osób
+                                    fizycznych. Ulga ma zastosowanie, kiedy
+                                    jesteśmy zatrudnieni z tytułu umowy o pracę
+                                    lub umowy zlecenie. Roczny limit przychodów
+                                    uprawniający do skorzystania z ulgi wynosi
+                                    85&nbsp;528&nbsp;zł.
+                                </p>
+                            </div>
+
+                            {/* Kwota wolna */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Czym jest kwota wolna od podatku?
+                                </h3>
+                                <p>
+                                    Kwota wolna od podatku jest sumą, od której
+                                    każdego roku nie mamy obowiązku odprowadzać
+                                    podatku dochodowego od osób fizycznych. Od
+                                    stycznia 2022 roku kwota wolna od podatku
+                                    wzrosła z 8&nbsp;000 do 30&nbsp;000&nbsp;zł.
+                                    Z kwoty wolnej od podatku skorzystać mogą
+                                    wyłącznie osoby podlegające opodatkowaniu
+                                    według skali podatkowej (PIT-37 i PIT-36).
+                                </p>
+                            </div>
+
+                            {/* Koszty uzyskania przychodu */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Czym są dla pracownika koszty uzyskania
+                                    przychodu?
+                                </h3>
+                                <p>
+                                    Koszty uzyskania przychodów to koszty, które
+                                    zostały poniesione przez pracownika w celu
+                                    osiągnięcia przychodów. Ich kwota wpływa na
+                                    wysokość dochodów podlegających PIT. Jeśli
+                                    mieszkamy w miejscowości, w której znajduje
+                                    się nasze miejsce pracy, to koszty uzyskania
+                                    przychodu wynosić będą 250&nbsp;zł
+                                    miesięcznie. Natomiast jeśli dojeżdżamy do
+                                    firmy z innej miejscowości to przysługują
+                                    nam koszty uzyskania przychodu na poziomie
+                                    300&nbsp;zł miesięcznie.
+                                </p>
+                            </div>
+
+                            {/* PPK */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Czym są Pracownicze Plany Kapitałowe?
+                                </h3>
+                                <p>
+                                    Pracownicze Plany Kapitałowe (PPK) są
+                                    dobrowolnym systemem oszczędzania, w którym
+                                    partycypują zarówno pracownicy, jak i
+                                    pracodawcy i państwo. Na PPK w ramach wpłaty
+                                    podstawowej przekazywane jest 2% naszego
+                                    wynagrodzenia. Pracodawca na konto PPK musi
+                                    wpłacać co najmniej 1,5% wynagrodzenia. W
+                                    ramach wpłat dodatkowych możemy zwiększyć
+                                    swój udział w PPK do 4% wynagrodzenia
+                                    brutto. Dodatkowo ze strony państwa możemy
+                                    liczyć na wpłatę powitalną w wysokości
+                                    250&nbsp;zł i dopłatę roczną w wysokości
+                                    240&nbsp;zł.
+                                </p>
+                            </div>
+
+                            {/* Koszty pracodawcy */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Jak obliczane są koszty pracodawcy?
+                                </h3>
+                                <p>
+                                    W przypadku zatrudnienia w oparciu o umowę o
+                                    pracę pracodawca zobligowany jest do
+                                    opłacania składek ZUS w pełnym wymiarze:
+                                    składka emerytalna (9,76%), ubezpieczenie
+                                    rentowe (6,50%), Fundusz Pracy (2,45%), FGŚP
+                                    (0,1%) i ubezpieczenie wypadkowe (1,67%).
+                                </p>
+                                <Card className="mt-4 p-4 rounded-lg">
+                                    <h4 className="font-semibold text-gray-900 mb-3 text-sm">
+                                        Składki ZUS i koszty - pracodawca
+                                    </h4>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex justify-between">
+                                            <span>Emerytalna</span>
+                                            <span className="font-medium">
+                                                9,76%
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Rentowa</span>
+                                            <span className="font-medium">
+                                                6,50%
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Wypadkowa</span>
+                                            <span className="font-medium">
+                                                1,67%
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Fundusz Pracy</span>
+                                            <span className="font-medium">
+                                                2,45%
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>FGŚP</span>
+                                            <span className="font-medium">
+                                                0,10%
+                                            </span>
+                                        </div>
+                                    </div>
+                                </Card>
+                                <p className="mt-3">
+                                    Dodatkowym kosztem po stronie pracodawcy
+                                    może być wpłata na Pracownicze Plany
+                                    Kapitałowe, o ile zdecydujemy się na takie
+                                    rozwiązanie. Wpłata nie może przekroczyć 4%
+                                    wynagrodzenia.
+                                </p>
+                            </div>
+
+                            {/* Fundusz Pracy */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Czym jest Fundusz Pracy?
+                                </h3>
+                                <p>
+                                    Fundusz Pracy jest państwowym funduszem
+                                    celowym. Jego główne zadania skupiają się na
+                                    łagodzeniu skutków bezrobocia, promocji
+                                    zatrudnienia i aktywizacji zawodowej. Środki
+                                    wpłacane na Fundusz Pracy przekazywane są
+                                    m.in. na zasiłki dla bezrobotnych, stypendia
+                                    naukowe, koszty szkolenia pracowników,
+                                    dodatki aktywizacyjne czy refundację kosztów
+                                    wyposażenia stanowiska pracy. Wysokość
+                                    składki na Fundusz Pracy to 2,45% wymiaru
+                                    składki.
+                                </p>
+                            </div>
+
+                            {/* FGŚP */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Czym jest Fundusz Gwarantowanych Świadczeń
+                                    Pracowniczych?
+                                </h3>
+                                <p>
+                                    FGŚP jest funduszem celowym, który ma za
+                                    zadanie chronić pracowników na wypadek
+                                    niewypłacalności pracodawcy. Składki na
+                                    fundusz są obowiązkowo odprowadzane przez
+                                    pracodawcę, którego łączy z pracownikiem
+                                    m.in. umowa o pracę, umowa o pracę nakładczą
+                                    czy umowa zlecenie. Składka na FGŚP wynosi
+                                    0,1% wymiaru składki.
+                                </p>
+                            </div>
+
+                            {/* Czy warto */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                    Kalkulator wynagrodzeń - czy warto?
+                                </h3>
+                                <p>
+                                    Kalkulator wynagrodzeń jest intuicyjnym
+                                    narzędziem pozwalającym w szybki i łatwy
+                                    sposób obliczyć, jak zmienia się
+                                    wynagrodzenie w ujęciu brutto netto.
+                                    Rozwiązanie to adresowane jest głównie dla
+                                    osób, których z pracodawcą łączy umowa o
+                                    pracę, umowa zlecenie i umowa o dzieło.
+                                    Możliwość uwzględnienia dodatkowych
+                                    parametrów, tj.&nbsp;kwota wolna od podatku,
+                                    ulga dla rodzin 4+ czy autorskie koszty
+                                    uzyskania przychodów, pozwala przeprowadzać
+                                    symulacje dla bardzo szczegółowych
+                                    scenariuszy.
+                                </p>
+                                <p className="mt-3">
+                                    Po wprowadzeniu kwoty brutto i uwzględnieniu
+                                    pozostałych elementów otrzymujemy
+                                    szczegółowe zestawienie składek ZUS i innych
+                                    kosztów. Kalkulator wynagrodzeń daje również
+                                    możliwość zmiany płacy brutto w
+                                    poszczególnych miesiącach roku. Z drugiej
+                                    strony można też sprawdzić, jakie koszty
+                                    zatrudnienia pracownika ponosi pracodawca,
+                                    co dobrze obrazuje, że wysokość naszego
+                                    wynagrodzenia brutto nie jest jedynym jego
+                                    kosztem.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
