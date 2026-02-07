@@ -1,16 +1,14 @@
 import { Badge } from "@/components/ui/badge";
+import { Logo } from "@/components/ui/logo";
 import {
     Check,
     X,
     Minus,
-    ArrowRight,
     Table2,
     FileSpreadsheet,
     Sparkles,
 } from "lucide-react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { ROUTES } from "@/lib/constants/routes";
+
 
 interface ComparisonFeature {
     name: string;
@@ -153,18 +151,15 @@ export function ComparisonSection() {
                 <div className="hidden md:block max-w-5xl mx-auto">
                     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                         {/* Table header */}
-                        <div className="grid grid-cols-[1fr_180px_140px_140px] bg-slate-50 border-b border-gray-200">
+                        <div className="grid grid-cols-[1fr_180px_140px_140px] bg-blue-50 border-b border-gray-200 items-center">
                             <div className="p-4 sm:p-5">
-                                <span className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
+                                <span className="text-sm font-bold text-blue-700 uppercase tracking-wider">
                                     Funkcja
                                 </span>
                             </div>
                             <div className="p-4 sm:p-5 text-center border-l border-gray-200 bg-blue-50/50">
                                 <div className="flex items-center justify-center gap-2">
-                                    <Sparkles className="w-5 h-5 text-blue-600" />
-                                    <span className="font-bold text-gray-900">
-                                        Calenda
-                                    </span>
+                                    <Logo />
                                 </div>
                             </div>
                             <div className="p-4 sm:p-5 text-center border-l border-gray-200">
