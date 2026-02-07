@@ -39,7 +39,7 @@ const features = [
         color: "lime",
         size: "medium",
     },
-        {
+    {
         icon: FileText,
         title: "Eksport PDF",
         description: "Pobierz i wydrukuj grafik jednym kliknieciem.",
@@ -49,7 +49,8 @@ const features = [
     {
         icon: Users,
         title: "Export Exel",
-        description: "Eksportuj grafik do Excela i edytuj go według własnych potrzeb.",
+        description:
+            "Eksportuj grafik do Excela i edytuj go według własnych potrzeb.",
         color: "violet",
         size: "medium",
     },
@@ -77,13 +78,13 @@ const features = [
     },
 
     {
-    icon: CalendarDays,
-    title: "Nadchodzące święta",
-    description:
-        "Automatyczna lista świąt i dni wolnych z uwzględnieniem planowania grafiku.",
-    color: "sky",
-    size: "small",
-},
+        icon: CalendarDays,
+        title: "Nadchodzące święta",
+        description:
+            "Automatyczna lista świąt i dni wolnych z uwzględnieniem planowania grafiku.",
+        color: "sky",
+        size: "small",
+    },
     {
         icon: Smartphone,
         title: "Mobile",
@@ -117,27 +118,27 @@ const colorClasses = {
 export function FeaturesSection() {
     return (
         <section
-            className="py-24 bg-slate-50 relative overflow-hidden"
+            className="py-16 sm:py-24 bg-slate-50 relative overflow-hidden"
             id="funkcje"
         >
             <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="text-center mb-16 animate-fade-in-up">
+                <div className="text-center mb-10 sm:mb-16 animate-fade-in-up">
                     <Badge className="mb-4 bg-blue-500/10 text-blue-700 border-blue-200/50">
                         <Zap className="w-4 h-4 mr-2" />
                         Funkcje
                     </Badge>
-                    <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+                    <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
                         Wszystko czego potrzebujesz
                     </h2>
-                    <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+                    <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto">
                         Kompleksowe narzedzie do zarzadzania grafikami pracy
                     </p>
                 </div>
 
                 {/* Bento Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 max-w-6xl mx-auto stagger-children">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 max-w-6xl mx-auto stagger-children">
                     {/* Large card - AI Generator */}
-                    <div className="col-span-2 row-span-2 group">
+                    <div className="col-span-1 sm:col-span-2 row-span-1 sm:row-span-2 group">
                         <div className="h-full bg-white rounded-2xl p-6 lg:p-8 border border-gray-100 shadow-sm hover:shadow-lg hover:border-gray-200 transition-all duration-300">
                             <div
                                 className={`w-14 h-14 rounded-xl ${colorClasses.blue} flex items-center justify-center mb-6 transition-colors`}
@@ -162,7 +163,10 @@ export function FeaturesSection() {
 
                     {/* Medium cards */}
                     {features.slice(1, 3).map((feature) => (
-                        <div key={feature.title} className="col-span-2 group">
+                        <div
+                            key={feature.title}
+                            className="col-span-1 sm:col-span-2 group"
+                        >
                             <div className="h-full bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-lg hover:border-gray-200 transition-all duration-300">
                                 <div
                                     className={`w-12 h-12 rounded-xl ${
@@ -185,10 +189,7 @@ export function FeaturesSection() {
 
                     {/* Small cards */}
                     {features.slice(3).map((feature) => (
-                        <div
-                            key={feature.title}
-                            className="col-span-1 sm:col-span-1 group"
-                        >
+                        <div key={feature.title} className="col-span-1 group">
                             <div className="h-full bg-white rounded-2xl p-4 lg:p-5 border border-gray-100 shadow-sm hover:shadow-lg hover:border-gray-200 transition-all duration-300">
                                 <div
                                     className={`w-10 h-10 rounded-lg ${

@@ -1,6 +1,10 @@
 export { HeroSection } from "./hero-section";
 export { StatsSection } from "./stats-section";
 export { FeaturesSection } from "./features-section";
+export { HowAIWorksSection } from "./how-ai-works-section";
+export { ComparisonSection } from "./comparison-section";
+export { UseCasesSection } from "./use-cases-section";
+export { ComplianceSection } from "./compliance-section";
 export { TimelineSection } from "./timeline-section";
 export { TestimonialsSection } from "./testimonials-section";
 export { FAQSection } from "./faq-section";

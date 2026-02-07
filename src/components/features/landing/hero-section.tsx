@@ -542,7 +542,7 @@ export function HeroSection() {
         >
             <BackgroundEffects />
 
-            <div className="container relative mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16 lg:pt-32">
+            <div className="container relative mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-12 sm:pt-20 sm:pb-16 lg:pt-32">
                 <div className="max-w-6xl mx-auto">
                     {/* Badge */}
                     <div className="flex justify-center mb-8 animate-fade-in-up">
@@ -553,8 +553,8 @@ export function HeroSection() {
                     </div>
 
                     {/* Headline */}
-                    <div className="text-center mb-8 animate-fade-in-up animate-delay-100">
-                        <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-gray-900 leading-[1.1]">
+                    <div className="text-center mb-6 sm:mb-8 animate-fade-in-up animate-delay-100">
+                        <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-gray-900 leading-[1.1]">
                             Grafik pracy
                             <br />
                             <span className="bg-linear-to-r from-blue-600 via-blue-500 to-violet-500 bg-clip-text text-transparent">
@@ -564,7 +564,7 @@ export function HeroSection() {
                     </div>
 
                     {/* Subheadline */}
-                    <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto text-center mb-10 leading-relaxed animate-fade-in-up animate-delay-200">
+                    <p className="text-base sm:text-lg md:text-xl text-gray-600 max-w-2xl mx-auto text-center mb-8 sm:mb-10 leading-relaxed animate-fade-in-up animate-delay-200">
                         Jeden klik. Algorytm AI tworzy optymalny grafik
                         <br className="hidden sm:block" />
                         zgodny z Kodeksem Pracy. Bez stresu, bez bledow.
@@ -608,7 +608,7 @@ export function HeroSection() {
                     </div>
 
                     {/* Trust badges */}
-                    <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-gray-500 mb-16 animate-fade-in animate-delay-400">
+                    <div className="flex flex-wrap items-center justify-center gap-x-4 sm:gap-x-8 gap-y-2 sm:gap-y-3 text-xs sm:text-sm text-gray-500 mb-10 sm:mb-16 animate-fade-in animate-delay-400">
                         {[
                             "Darmowy grafik AI",
                             "Bez karty kredytowej",
@@ -619,6 +619,14 @@ export function HeroSection() {
                                 <span>{text}</span>
                             </div>
                         ))}
+                    </div>
+
+                    {/* Mobile scroll hint */}
+                    <div className="flex sm:hidden items-center justify-center gap-2 text-xs text-gray-400 mb-3 animate-fade-in animate-delay-500">
+                        <ArrowRight className="w-3 h-3" />
+                        <span>
+                            Przewiń tabelę w prawo, aby zobaczyć cały grafik
+                        </span>
                     </div>
 
                     {/* Schedule Preview - IDENTYCZNY jak compact view */}
@@ -684,7 +692,7 @@ export function HeroSection() {
                             </div>
 
                             {/* Schedule Content - jak compact-view */}
-                            <div className="p-4 sm:p-6 bg-linear-to-b from-slate-50/50 to-white">
+                            <div className="p-2 sm:p-4 md:p-6 bg-linear-to-b from-slate-50/50 to-white">
                                 {/* Header with month and action toolbar */}
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="flex items-center gap-3">
@@ -792,7 +800,7 @@ export function HeroSection() {
 
                                 {/* Calendar grid - identyczny jak schedule hero view */}
                                 <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs w-full overflow-x-auto">
-                                    <div className="min-w-200">
+                                    <div className="min-w-[640px] sm:min-w-[700px] md:min-w-0">
                                         {/* Day headers */}
                                         <div className="grid grid-cols-[180px_repeat(7,1fr)] h-14 bg-linear-to-b from-slate-50 to-slate-100/50 border-b border-slate-200/80">
                                             <div className="flex flex-col items-center justify-center border-r border-slate-200/80 p-2">

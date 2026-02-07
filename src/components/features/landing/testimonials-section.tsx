@@ -61,14 +61,14 @@ const testimonials = [
 
 export function TestimonialsSection() {
     return (
-        <section className="py-24 bg-slate-50 overflow-hidden">
+        <section className="py-16 sm:py-24 bg-slate-50 overflow-hidden">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="text-center mb-16 animate-fade-in-up">
+                <div className="text-center mb-10 sm:mb-16 animate-fade-in-up">
                     <Badge className="mb-4 bg-amber-500/10 text-amber-700 border-amber-200/50">
                         <MessageSquare className="w-4 h-4 mr-2" />
                         Opinie
                     </Badge>
-                    <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+                    <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
                         Zaufali nam
                     </h2>
                     <p className="text-lg text-gray-600 max-w-2xl mx-auto">
@@ -93,7 +93,7 @@ export function TestimonialsSection() {
                 </div>
 
                 {/* Grid for mobile, scrolling for desktop */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto stagger-children">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 max-w-6xl mx-auto stagger-children">
                     {testimonials.map((testimonial) => (
                         <div key={testimonial.name}>
                             <TestimonialCard testimonial={testimonial} />
@@ -139,7 +139,6 @@ function TestimonialCard({
                     <div className="font-medium text-gray-900 text-sm">
                         {testimonial.name}
                     </div>
-                   
                 </div>
             </div>
         </div>

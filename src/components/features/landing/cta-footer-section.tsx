@@ -42,7 +42,7 @@ const socialLinks = [
 
 export function CTASection() {
     return (
-        <section className="py-24 bg-linear-to-r from-blue-500 via-indigo-600 to-violet-600 relative overflow-hidden">
+        <section className="py-16 sm:py-24 bg-linear-to-r from-blue-500 via-indigo-600 to-violet-600 relative overflow-hidden">
             {/* Background pattern */}
             <div className="absolute inset-0 opacity-10">
                 <div className="absolute inset-0 bg-[linear-gradient(to_right,#fff_1px,transparent_1px),linear-gradient(to_bottom,#fff_1px,transparent_1px)] bg-size-[4rem_4rem]" />
@@ -57,11 +57,11 @@ export function CTASection() {
                         Zacznij już dziś
                     </Badge>
 
-                    <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-6">
+                    <h2 className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-4 sm:mb-6">
                         Gotowy na automatyczne grafiki?
                     </h2>
 
-                    <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
+                    <p className="text-base sm:text-xl text-blue-100 mb-6 sm:mb-8 max-w-2xl mx-auto">
                         Dołącz do firm, które już oszczędzają godziny tygodniowo
                         na planowaniu grafiku pracy.
                     </p>
@@ -106,7 +106,7 @@ export function CTASection() {
 
 export function FooterSection() {
     return (
-        <footer className="bg-gray-900 text-gray-300 py-16">
+        <footer className="bg-gray-900 text-gray-300 py-10 sm:py-16">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
                     {/* Brand */}

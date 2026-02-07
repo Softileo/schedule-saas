@@ -40,7 +40,7 @@ const steps = [
     {
         number: "05",
         icon: Send,
-        title: "Opublikuj",
+        title: "Opublikuj/PDF",
         description: "Udostępnij zespołowi.",
         color: "rose",
     },
@@ -64,14 +64,14 @@ const bgColorClasses: Record<string, string> = {
 
 export function TimelineSection() {
     return (
-        <section className="py-24 bg-white">
+        <section className="py-16 sm:py-24 bg-white">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="text-center mb-16 animate-fade-in-up">
+                <div className="text-center mb-10 sm:mb-16 animate-fade-in-up">
                     <Badge className="mb-4 bg-violet-500/10 text-violet-700 border-violet-200/50">
                         <ArrowRight className="w-4 h-4 mr-2" />
                         Jak to działa
                     </Badge>
-                    <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+                    <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
                         5 prostych kroków
                     </h2>
                     <p className="text-lg text-gray-600">

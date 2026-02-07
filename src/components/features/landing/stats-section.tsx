@@ -47,7 +47,7 @@ function AnimatedNumber({ value, suffix }: { value: number; suffix: string }) {
                     observer.disconnect();
                 }
             },
-            { threshold: 0.1, rootMargin: "-100px" }
+            { threshold: 0.1, rootMargin: "-100px" },
         );
 
         if (ref.current) {
@@ -74,7 +74,7 @@ function AnimatedNumber({ value, suffix }: { value: number; suffix: string }) {
             setCount(
                 value % 1 === 0
                     ? Math.floor(currentValue)
-                    : Math.round(currentValue * 10) / 10
+                    : Math.round(currentValue * 10) / 10,
             );
 
             if (progress < 1) {
@@ -97,13 +97,10 @@ function AnimatedNumber({ value, suffix }: { value: number; suffix: string }) {
 
 export function StatsSection() {
     return (
-        <section className="py-20 bg-white border-y border-gray-100 relative overflow-hidden">
-
-           
-
+        <section className="py-12 sm:py-20 bg-white border-y border-gray-100 relative overflow-hidden">
             <div className="container relative mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="text-center mb-16 animate-fade-in-up">
-                    <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+                <div className="text-center mb-10 sm:mb-16 animate-fade-in-up">
+                    <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
                         Liczby mowia same za siebie
                     </h2>
                     <p className="text-lg text-gray-600 max-w-2xl mx-auto">
@@ -111,14 +108,14 @@ export function StatsSection() {
                     </p>
                 </div>
 
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 stagger-children">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8 stagger-children">
                     {stats.map((stat) => (
                         <div key={stat.label} className="relative group">
-                            <div className="bg-gray-50 rounded-2xl p-6 lg:p-8 border border-gray-100 shadow-sm hover:shadow-lg hover:border-gray-200 transition-all duration-300">
-                                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-blue-50 text-blue-600 mb-4 group-hover:scale-110 transition-transform">
-                                    <stat.icon className="w-6 h-6" />
+                            <div className="bg-gray-50 rounded-2xl p-4 sm:p-6 lg:p-8 border border-gray-100 shadow-sm hover:shadow-lg hover:border-gray-200 transition-all duration-300">
+                                <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-blue-600 mb-3 sm:mb-4 group-hover:scale-110 transition-transform">
+                                    <stat.icon className="w-5 h-5 sm:w-6 sm:h-6" />
                                 </div>
-                                <div className="text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+                                <div className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-1 sm:mb-2">
                                     <AnimatedNumber
                                         value={stat.value}
                                         suffix={stat.suffix}
