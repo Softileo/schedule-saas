@@ -11,6 +11,7 @@ import { MONTH_PAGES_2026, INDUSTRY_PAGES } from "@/lib/seo/page-configs";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TemplateDownloadDialog } from "@/components/features/schedule/template-download-dialog";
 import {
     Calendar,
     ArrowRight,
@@ -199,19 +200,18 @@ export default function GrafikPracyPage() {
                                         </p>
                                     </div>
                                 </div>
-                                <Button
-                                    variant="outline"
-                                    className="w-full"
-                                    asChild
+                                <TemplateDownloadDialog
+                                    format="csv"
+                                    year={2026}
                                 >
-                                    <a
-                                        href="/api/schedule/template/csv?year=2026"
-                                        download
+                                    <Button
+                                        variant="outline"
+                                        className="w-full"
                                     >
                                         <Download className="w-4 h-4 mr-2" />
                                         Pobierz szablon CSV
-                                    </a>
-                                </Button>
+                                    </Button>
+                                </TemplateDownloadDialog>
                             </Card>
 
                             <Card className="p-6 rounded-xl hover:shadow-md transition-shadow">
@@ -228,19 +228,18 @@ export default function GrafikPracyPage() {
                                         </p>
                                     </div>
                                 </div>
-                                <Button
-                                    variant="outline"
-                                    className="w-full"
-                                    asChild
+                                <TemplateDownloadDialog
+                                    format="pdf"
+                                    year={2026}
                                 >
-                                    <a
-                                        href="/api/schedule/template/pdf?year=2026"
-                                        target="_blank"
+                                    <Button
+                                        variant="outline"
+                                        className="w-full"
                                     >
                                         <Download className="w-4 h-4 mr-2" />
                                         Pobierz szablon PDF
-                                    </a>
-                                </Button>
+                                    </Button>
+                                </TemplateDownloadDialog>
                             </Card>
                         </div>
 

@@ -32,6 +32,7 @@ import { fetchHolidays } from "@/lib/api/holidays";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { TemplateDownloadDialog } from "@/components/features/schedule/template-download-dialog";
 import {
     Calendar,
     Clock,
@@ -334,24 +335,26 @@ async function MonthPage({
                             Pobierz szablon grafiku
                         </h3>
                         <div className="flex flex-wrap justify-center gap-4">
-                            <Button variant="outline" asChild>
-                                <a
-                                    href={`/api/schedule/template/pdf?year=${config.year}&month=${config.month}&employees=10`}
-                                    target="_blank"
-                                >
+                            <TemplateDownloadDialog
+                                format="pdf"
+                                year={config.year}
+                                month={config.month}
+                            >
+                                <Button variant="outline">
                                     <Download className="w-4 h-4 mr-2" />
                                     Pobierz PDF
-                                </a>
-                            </Button>
-                            <Button variant="outline" asChild>
-                                <a
-                                    href={`/api/schedule/template/csv?year=${config.year}&month=${config.month}&employees=10`}
-                                    download
-                                >
+                                </Button>
+                            </TemplateDownloadDialog>
+                            <TemplateDownloadDialog
+                                format="csv"
+                                year={config.year}
+                                month={config.month}
+                            >
+                                <Button variant="outline">
                                     <Download className="w-4 h-4 mr-2" />
                                     Pobierz Excel (CSV)
-                                </a>
-                            </Button>
+                                </Button>
+                            </TemplateDownloadDialog>
                         </div>
                     </div>
                 </div>
@@ -573,32 +576,30 @@ function IndustryPage({
                                 planować już dziś.
                             </p>
                             <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                                <Button
-                                    variant="secondary"
-                                    className="bg-white text-blue-600 hover:bg-blue-50"
-                                    asChild
+                                <TemplateDownloadDialog
+                                    format="csv"
+                                    year={2026}
                                 >
-                                    <a
-                                        href="/api/schedule/template/csv?year=2026&employees=10"
-                                        download
+                                    <Button
+                                        variant="secondary"
+                                        className="bg-white text-blue-600 hover:bg-blue-50"
                                     >
                                         <Download className="w-4 h-4 mr-2" />
                                         Pobierz Excel (CSV)
-                                    </a>
-                                </Button>
-                                <Button
-                                    variant="secondary"
-                                    className="bg-white/10 text-white hover:bg-white/20 border-white/20"
-                                    asChild
+                                    </Button>
+                                </TemplateDownloadDialog>
+                                <TemplateDownloadDialog
+                                    format="pdf"
+                                    year={2026}
                                 >
-                                    <a
-                                        href="/api/schedule/template/pdf?year=2026&employees=10"
-                                        target="_blank"
+                                    <Button
+                                        variant="secondary"
+                                        className="bg-white/10 text-white hover:bg-white/20 border-white/20"
                                     >
                                         <Download className="w-4 h-4 mr-2" />
                                         Pobierz PDF
-                                    </a>
-                                </Button>
+                                    </Button>
+                                </TemplateDownloadDialog>
                             </div>
                         </Card>
                     </div>

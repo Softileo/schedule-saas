@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fetchHolidaysForMonth, getTradingSundays } from "@/lib/api/holidays";
 
 /**
  * Generuje szablon grafiku pracy w formacie CSV
@@ -51,6 +52,12 @@ export async function GET(request: NextRequest) {
     const monthName = MONTH_NAMES[month - 1];
     const daysInMonth = new Date(year, month, 0).getDate();
 
+    // Fetch holidays and trading Sundays
+    const holidays = await fetchHolidaysForMonth(year, month);
+    const tradingSundays = getTradingSundays(year);
+    const holidayDates = new Set(holidays.map((h) => h.date));
+    const tradingSundayDates = new Set(tradingSundays);
+
     // BOM for UTF-8 Excel compatibility
     const BOM = "\uFEFF";
 
@@ -59,7 +66,13 @@ export async function GET(request: NextRequest) {
     for (let d = 1; d <= daysInMonth; d++) {
         const date = new Date(year, month - 1, d);
         const dayName = DAY_NAMES[date.getDay()];
-        headers.push(`${d} ${dayName}`);
+        const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        const isHoliday = holidayDates.has(dateStr);
+        const isTradingSunday = tradingSundayDates.has(dateStr);
+        let suffix = "";
+        if (isHoliday) suffix = " [Św]";
+        else if (isTradingSunday) suffix = " [NH]";
+        headers.push(`${d} ${dayName}${suffix}`);
     }
     headers.push("Suma godzin");
 
@@ -68,14 +81,7 @@ export async function GET(request: NextRequest) {
     for (let e = 1; e <= employeeCount; e++) {
         const row = [`Pracownik ${e}`];
         for (let d = 1; d <= daysInMonth; d++) {
-            const date = new Date(year, month - 1, d);
-            const dayOfWeek = date.getDay();
-            // Mark weekends
-            if (dayOfWeek === 0 || dayOfWeek === 6) {
-                row.push("W");
-            } else {
-                row.push("");
-            }
+            row.push("");
         }
         row.push(""); // Suma godzin - empty for user to fill
         rows.push(row);

@@ -27,14 +27,14 @@ export default async function AdminProtectedLayout({
                 <div className="container mx-auto px-4 py-4">
                     <div className="flex items-center justify-between">
                         <h1 className="text-xl font-bold text-slate-900">
-                            Calenda Admin
+                            Admin
                         </h1>
                         <div className="flex items-center gap-4">
                             <a
                                 href="/admin"
                                 className="text-sm text-blue-600 hover:text-blue-700"
                             >
-                                ← Powrót do panelu
+                                ← Powrót
                             </a>
                             <AdminLogoutButton />
                         </div>

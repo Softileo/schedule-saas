@@ -13,6 +13,7 @@ import { generateFAQSchema, generateBreadcrumbSchema } from "@/lib/seo/schemas";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { TemplateDownloadDialog } from "@/components/features/schedule/template-download-dialog";
 import {
     FileSpreadsheet,
     FileText,
@@ -345,27 +346,26 @@ export default function SzablonyPage() {
                                             )}
                                         </div>
 
-                                        <Button
-                                            className="w-full"
-                                            variant={
-                                                template.isPDF
-                                                    ? "outline"
-                                                    : "default"
+                                        <TemplateDownloadDialog
+                                            format={
+                                                template.isPDF ? "pdf" : "csv"
                                             }
-                                            asChild
+                                            year={2026}
                                         >
-                                            <a
-                                                href={template.downloadUrl}
-                                                {...(template.isPDF
-                                                    ? { target: "_blank" }
-                                                    : { download: true })}
+                                            <Button
+                                                className="w-full"
+                                                variant={
+                                                    template.isPDF
+                                                        ? "outline"
+                                                        : "default"
+                                                }
                                             >
                                                 <Download className="w-4 h-4 mr-2" />
                                                 {template.isPDF
                                                     ? "Otwórz do druku"
                                                     : "Pobierz szablon"}
-                                            </a>
-                                        </Button>
+                                            </Button>
+                                        </TemplateDownloadDialog>
                                     </Card>
                                 );
                             })}

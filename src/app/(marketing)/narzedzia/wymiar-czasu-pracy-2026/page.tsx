@@ -303,7 +303,7 @@ export default function WymiarCzasuPracyPage() {
             />
 
             {/* CTA */}
-            <section className="py-16">
+            <section className="pt-16">
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-3xl">
                     <CTABanner
                         title="Automatycznie pilnuj wymiaru czasu pracy"
