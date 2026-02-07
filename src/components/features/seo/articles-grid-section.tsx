@@ -37,7 +37,7 @@ export function ArticlesGridSection({
     return (
         <section className="py-12 bg-gray-50/50">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="max-w-4xl mx-auto">
+                <div className="max-w-7xl mx-auto">
                     {icon ? (
                         <div className="flex items-center gap-3 mb-8">
                             {icon}
@@ -51,7 +51,7 @@ export function ArticlesGridSection({
                         </h2>
                     )}
 
-                    <div className="grid sm:grid-cols-2 gap-6">
+                    <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-6">
                         {articles.map((article) => (
                             <ContentCard
                                 key={article.slug}

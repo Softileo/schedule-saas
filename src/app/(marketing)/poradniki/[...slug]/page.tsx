@@ -145,7 +145,7 @@ export default async function PoradnikArticlePage({ params }: PageProps) {
                     />
 
                     {/* Header artykułu */}
-                    <div className="max-w-3xl mx-auto mt-8">
+                    <div className="max-w-6xl mx-auto my-12 lg:my-24">
                         <Link
                             href={`/poradniki/${category}`}
                             className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-6"
@@ -222,7 +222,7 @@ export default async function PoradnikArticlePage({ params }: PageProps) {
                             <h2 className="text-xl font-bold text-gray-900 mb-4">
                                 Powiązane artykuły
                             </h2>
-                            <div className="grid sm:grid-cols-2 gap-4">
+                            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
                                 {post.relatedPosts.map((relatedSlug) => (
                                     <Link
                                         key={relatedSlug}

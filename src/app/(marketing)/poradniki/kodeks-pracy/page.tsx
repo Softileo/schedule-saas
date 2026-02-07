@@ -73,7 +73,7 @@ export default async function KodeksPracyPage() {
     return (
         <SEOPageLayout>
             {/* Hero Section */}
-            <div className="bg-linear-to-b from-gray-50 to-white pt-24 pb-16">
+            <div className="pt-24 pb-16">
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                     <div className="flex flex-col lg:flex-row items-center gap-12">
                         <div className="flex-1 space-y-6">
