@@ -134,7 +134,7 @@ export async function getAllBlogPosts(): Promise<PostMeta[]> {
         })
         .filter((post) => post.published !== false) // Exclude unpublished
         .sort(
-            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
         );
 
     return posts;
@@ -160,7 +160,7 @@ export async function getBlogPost(slug: string): Promise<Post | null> {
         readingTime: stats.text,
         wordCount: stats.words,
         content,
-        source: fileContent,
+        source: content,
     };
 }
 
@@ -247,7 +247,7 @@ export async function getPoradnik(slugPath: string[]): Promise<Post | null> {
         readingTime: stats.text,
         wordCount: stats.words,
         content,
-        source: fileContent,
+        source: content,
     };
 }
 
@@ -275,7 +275,7 @@ export function getAllPoradnikiPaths(): string[][] {
  * Get poradniki by cluster
  */
 export async function getPoradnikiByCluster(
-    cluster: string
+    cluster: string,
 ): Promise<PoradnikMeta[]> {
     const all = await getAllPoradniki();
     return all.filter((p) => p.cluster === cluster);
@@ -292,7 +292,7 @@ export async function getRelatedPosts(
     currentSlug: string,
     category?: string,
     tags?: string[],
-    limit: number = 3
+    limit: number = 3,
 ): Promise<PostMeta[]> {
     const allPosts = await getAllBlogPosts();
 
