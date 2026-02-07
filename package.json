@@ -13,7 +13,7 @@
         "test:watch": "vitest",
         "test:quick": "vitest run",
         "type-check": "tsc --noEmit",
-        "sitemap": "next-sitemap",
+        "sitemap": "next build && next-sitemap",
         "prepare": "husky",
         "deploy:python": "cd python && ./deploy.sh"
     },
