@@ -20,6 +20,20 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
+    Table,
+    TableBody,
+    TableCell,
+    TableFooter,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
     Calculator,
     Banknote,
     Info,
@@ -29,6 +43,7 @@ import {
     Heart,
     Shield,
     Briefcase,
+    ChevronDown,
 } from "lucide-react";
 
 // =============================================================================
@@ -55,6 +70,37 @@ const MIN_WAGE_2026 = 4806; // Przewidywana płaca minimalna
 const KOSZTY_PODSTAWOWE = 250;
 const KOSZTY_PODWYZSZONE = 300;
 
+// Roczny limit podstawy składek emerytalno-rentowych (30× prognozowane przeciętne wynagrodzenie)
+const ZUS_ANNUAL_CAP = 287910;
+
+// Stawki pracodawcy
+const EMPLOYER_RENTOWE = 0.065;
+const EMPLOYER_WYPADKOWA = 0.0167;
+const EMPLOYER_FP = 0.0245;
+const EMPLOYER_FGSP = 0.001;
+const EMPLOYER_PPK = 0.015;
+
+// Nazwy miesięcy
+const MONTHS_PL = [
+    "Styczeń",
+    "Luty",
+    "Marzec",
+    "Kwiecień",
+    "Maj",
+    "Czerwiec",
+    "Lipiec",
+    "Sierpień",
+    "Wrzesień",
+    "Październik",
+    "Listopad",
+    "Grudzień",
+];
+
+// Zaokrąglanie do groszy
+function round2(value: number): number {
+    return Math.round(value * 100) / 100;
+}
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -75,6 +121,30 @@ interface CalculationResult {
     zaliczkaPodatek: number;
     netto: number;
     pracodawcaKoszty: number;
+}
+
+interface MonthlyEmployeeRow {
+    month: string;
+    brutto: number;
+    emerytalne: number;
+    rentowe: number;
+    chorobowe: number;
+    zdrowotne: number;
+    zaliczka: number;
+    ppk: number;
+    netto: number;
+}
+
+interface MonthlyEmployerRow {
+    month: string;
+    brutto: number;
+    emerytalne: number;
+    rentowe: number;
+    wypadkowa: number;
+    fp: number;
+    fgsp: number;
+    ppk: number;
+    koszty: number;
 }
 
 // =============================================================================
@@ -159,13 +229,13 @@ function calculateSalary(
 
     if (contractType === "employment") {
         // Umowa o pracę - pełne składki
-        emerytalne = brutto * ZUS_EMERYTALNE;
-        rentowe = brutto * ZUS_RENTOWE;
-        chorobowe = brutto * ZUS_CHOROBOWE;
+        emerytalne = round2(brutto * ZUS_EMERYTALNE);
+        rentowe = round2(brutto * ZUS_RENTOWE);
+        chorobowe = round2(brutto * ZUS_CHOROBOWE);
     } else if (contractType === "contract") {
         // Umowa zlecenie - bez chorobowej (chyba że dobrowolnie)
-        emerytalne = brutto * ZUS_EMERYTALNE;
-        rentowe = brutto * ZUS_RENTOWE;
+        emerytalne = round2(brutto * ZUS_EMERYTALNE);
+        rentowe = round2(brutto * ZUS_RENTOWE);
         chorobowe = 0;
     } else {
         // Umowa o dzieło - brak składek ZUS
@@ -174,18 +244,18 @@ function calculateSalary(
         chorobowe = 0;
     }
 
-    const sumaSkladekPracownik = emerytalne + rentowe + chorobowe;
+    const sumaSkladekPracownik = round2(emerytalne + rentowe + chorobowe);
 
     // PPK (jeśli włączone)
-    const ppkPracownik = ppk ? brutto * ppkRate : 0;
+    const ppkPracownik = ppk ? round2(brutto * ppkRate) : 0;
 
     // Podstawa zdrowotnego
-    const podstawaZdrowotne = brutto - sumaSkladekPracownik;
+    const podstawaZdrowotne = round2(brutto - sumaSkladekPracownik);
     // Składka zdrowotna - dla umowy o dzieło nie ma obowiązku jeśli to dodatkowa umowa
     const zdrowotne =
         contractType === "work-agreement"
             ? 0
-            : podstawaZdrowotne * ZUS_ZDROWOTNE;
+            : round2(podstawaZdrowotne * ZUS_ZDROWOTNE);
 
     // Koszty uzyskania przychodu
     const koszty = koszyPodwyzszone ? KOSZTY_PODWYZSZONE : KOSZTY_PODSTAWOWE;
@@ -234,7 +304,7 @@ function calculateSalary(
     }
 
     // Netto
-    const netto = Math.round(
+    const netto = round2(
         brutto -
             sumaSkladekPracownik -
             zdrowotne -
@@ -243,20 +313,21 @@ function calculateSalary(
     );
 
     // Całkowity koszt pracodawcy
-    const pracodawcaEmery = brutto * ZUS_EMERYTALNE;
-    const pracodawcaRent = brutto * 0.065;
-    const pracodawcaWypad = brutto * 0.0167;
-    const pracodawcaFP = brutto * 0.0245;
-    const pracodawcaFGSP = brutto * 0.001;
-    const pracodawcaPPK = ppk ? brutto * 0.015 : 0; // 1.5% pracodawca PPK
-    const pracodawcaKoszty =
+    const pracodawcaEmery = round2(brutto * ZUS_EMERYTALNE);
+    const pracodawcaRent = round2(brutto * EMPLOYER_RENTOWE);
+    const pracodawcaWypad = round2(brutto * EMPLOYER_WYPADKOWA);
+    const pracodawcaFP = round2(brutto * EMPLOYER_FP);
+    const pracodawcaFGSP = round2(brutto * EMPLOYER_FGSP);
+    const pracodawcaPPK = ppk ? round2(brutto * EMPLOYER_PPK) : 0;
+    const pracodawcaKoszty = round2(
         brutto +
-        pracodawcaEmery +
-        pracodawcaRent +
-        pracodawcaWypad +
-        pracodawcaFP +
-        pracodawcaFGSP +
-        pracodawcaPPK;
+            pracodawcaEmery +
+            pracodawcaRent +
+            pracodawcaWypad +
+            pracodawcaFP +
+            pracodawcaFGSP +
+            pracodawcaPPK,
+    );
 
     return {
         brutto,
@@ -270,8 +341,161 @@ function calculateSalary(
         podstawaOpodatkowania,
         zaliczkaPodatek,
         netto,
-        pracodawcaKoszty: Math.round(pracodawcaKoszty),
+        pracodawcaKoszty,
     };
+}
+
+// =============================================================================
+// MONTHLY BREAKDOWN FUNCTIONS
+// =============================================================================
+
+function calculateMonthlyEmployee(
+    monthlyBrutto: number,
+    kosztyPodwyzszone: boolean,
+    ulga26: boolean,
+    ppk: boolean,
+    ppkRate: number,
+    contractType: ContractType,
+): MonthlyEmployeeRow[] {
+    const rows: MonthlyEmployeeRow[] = [];
+    let cumulativeBrutto = 0;
+
+    for (let i = 0; i < 12; i++) {
+        const brutto = monthlyBrutto;
+        const prevCumBrutto = cumulativeBrutto;
+        cumulativeBrutto += brutto;
+
+        let emerytalne = 0;
+        let rentowe = 0;
+        let chorobowe = 0;
+
+        if (contractType === "employment" || contractType === "contract") {
+            if (prevCumBrutto >= ZUS_ANNUAL_CAP) {
+                emerytalne = 0;
+                rentowe = 0;
+            } else if (cumulativeBrutto > ZUS_ANNUAL_CAP) {
+                const basis = ZUS_ANNUAL_CAP - prevCumBrutto;
+                emerytalne = round2(basis * ZUS_EMERYTALNE);
+                rentowe = round2(basis * ZUS_RENTOWE);
+            } else {
+                emerytalne = round2(brutto * ZUS_EMERYTALNE);
+                rentowe = round2(brutto * ZUS_RENTOWE);
+            }
+            if (contractType === "employment") {
+                chorobowe = round2(brutto * ZUS_CHOROBOWE);
+            }
+        }
+
+        const sumaSkladek = round2(emerytalne + rentowe + chorobowe);
+        const ppkPracownik = ppk ? round2(brutto * ppkRate) : 0;
+        const podstawaZdrowotne = round2(brutto - sumaSkladek);
+        const zdrowotne =
+            contractType === "work-agreement"
+                ? 0
+                : round2(podstawaZdrowotne * ZUS_ZDROWOTNE);
+
+        const koszty = kosztyPodwyzszone
+            ? KOSZTY_PODWYZSZONE
+            : KOSZTY_PODSTAWOWE;
+        const podstawaOpodatkowania = Math.max(
+            0,
+            Math.round(brutto - sumaSkladek - koszty),
+        );
+
+        let zaliczka = 0;
+        if (!ulga26) {
+            const progMiesieczny = TAX_THRESHOLD / 12;
+            let podatek = 0;
+            if (podstawaOpodatkowania <= progMiesieczny) {
+                podatek = podstawaOpodatkowania * TAX_RATE_1;
+            } else {
+                podatek =
+                    progMiesieczny * TAX_RATE_1 +
+                    (podstawaOpodatkowania - progMiesieczny) * TAX_RATE_2;
+            }
+            const kwotaZmniejszajacaLimit = TAX_REDUCTION_INCOME_LIMIT / 12;
+            const kwotaZmniejszajaca =
+                podstawaOpodatkowania <= kwotaZmniejszajacaLimit
+                    ? TAX_REDUCTION_AMOUNT
+                    : 0;
+            zaliczka = Math.max(0, Math.round(podatek - kwotaZmniejszajaca));
+        }
+
+        const netto = round2(
+            brutto - sumaSkladek - zdrowotne - zaliczka - ppkPracownik,
+        );
+
+        rows.push({
+            month: MONTHS_PL[i],
+            brutto,
+            emerytalne,
+            rentowe,
+            chorobowe,
+            zdrowotne,
+            zaliczka,
+            ppk: ppkPracownik,
+            netto,
+        });
+    }
+
+    return rows;
+}
+
+function calculateMonthlyEmployer(
+    monthlyBrutto: number,
+    ppk: boolean,
+    contractType: ContractType,
+): MonthlyEmployerRow[] {
+    const rows: MonthlyEmployerRow[] = [];
+    let cumulativeBrutto = 0;
+
+    for (let i = 0; i < 12; i++) {
+        const brutto = monthlyBrutto;
+        const prevCumBrutto = cumulativeBrutto;
+        cumulativeBrutto += brutto;
+
+        let emerytalne = 0;
+        let rentowe = 0;
+        let wypadkowa = 0;
+        let fp = 0;
+        let fgsp = 0;
+
+        if (contractType === "employment" || contractType === "contract") {
+            if (prevCumBrutto >= ZUS_ANNUAL_CAP) {
+                emerytalne = 0;
+                rentowe = 0;
+            } else if (cumulativeBrutto > ZUS_ANNUAL_CAP) {
+                const basis = ZUS_ANNUAL_CAP - prevCumBrutto;
+                emerytalne = round2(basis * ZUS_EMERYTALNE);
+                rentowe = round2(basis * EMPLOYER_RENTOWE);
+            } else {
+                emerytalne = round2(brutto * ZUS_EMERYTALNE);
+                rentowe = round2(brutto * EMPLOYER_RENTOWE);
+            }
+            wypadkowa = round2(brutto * EMPLOYER_WYPADKOWA);
+            fp = round2(brutto * EMPLOYER_FP);
+            fgsp = round2(brutto * EMPLOYER_FGSP);
+        }
+
+        const ppkEmployer = ppk ? round2(brutto * EMPLOYER_PPK) : 0;
+        const koszty = round2(
+            brutto + emerytalne + rentowe + wypadkowa + fp + fgsp + ppkEmployer,
+        );
+
+        rows.push({
+            month: MONTHS_PL[i],
+            brutto,
+            emerytalne,
+            rentowe,
+            wypadkowa,
+            fp,
+            fgsp,
+            ppk: ppkEmployer,
+            koszty,
+        });
+    }
+
+    return rows;
 }
 
 // =============================================================================
@@ -289,6 +513,10 @@ export default function KalkulatorWynagrodzenPage() {
     const [ulga26, setUlga26] = useState(false);
     const [ppk, setPpk] = useState(false);
     const [ppkRate, setPpkRate] = useState("0.02");
+    const [detailsOpen, setDetailsOpen] = useState(false);
+    const [detailTab, setDetailTab] = useState<"employee" | "employer">(
+        "employee",
+    );
 
     const inputNum = parseFloat(inputValue) || 0;
 
@@ -321,11 +549,101 @@ export default function KalkulatorWynagrodzenPage() {
         [bruttoNum, kosztyPodwyzszone, ulga26, ppk, ppkRate, contractType],
     );
 
+    const monthlyEmployee = useMemo(
+        () =>
+            calculateMonthlyEmployee(
+                bruttoNum,
+                kosztyPodwyzszone,
+                ulga26,
+                ppk,
+                parseFloat(ppkRate),
+                contractType,
+            ),
+        [bruttoNum, kosztyPodwyzszone, ulga26, ppk, ppkRate, contractType],
+    );
+
+    const monthlyEmployer = useMemo(
+        () => calculateMonthlyEmployer(bruttoNum, ppk, contractType),
+        [bruttoNum, ppk, contractType],
+    );
+
+    const employeeTotals = useMemo(() => {
+        const t = {
+            brutto: 0,
+            emerytalne: 0,
+            rentowe: 0,
+            chorobowe: 0,
+            zdrowotne: 0,
+            zaliczka: 0,
+            ppk: 0,
+            netto: 0,
+        };
+        for (const r of monthlyEmployee) {
+            t.brutto += r.brutto;
+            t.emerytalne += r.emerytalne;
+            t.rentowe += r.rentowe;
+            t.chorobowe += r.chorobowe;
+            t.zdrowotne += r.zdrowotne;
+            t.zaliczka += r.zaliczka;
+            t.ppk += r.ppk;
+            t.netto += r.netto;
+        }
+        return {
+            brutto: round2(t.brutto),
+            emerytalne: round2(t.emerytalne),
+            rentowe: round2(t.rentowe),
+            chorobowe: round2(t.chorobowe),
+            zdrowotne: round2(t.zdrowotne),
+            zaliczka: round2(t.zaliczka),
+            ppk: round2(t.ppk),
+            netto: round2(t.netto),
+        };
+    }, [monthlyEmployee]);
+
+    const employerTotals = useMemo(() => {
+        const t = {
+            brutto: 0,
+            emerytalne: 0,
+            rentowe: 0,
+            wypadkowa: 0,
+            fp: 0,
+            fgsp: 0,
+            ppk: 0,
+            koszty: 0,
+        };
+        for (const r of monthlyEmployer) {
+            t.brutto += r.brutto;
+            t.emerytalne += r.emerytalne;
+            t.rentowe += r.rentowe;
+            t.wypadkowa += r.wypadkowa;
+            t.fp += r.fp;
+            t.fgsp += r.fgsp;
+            t.ppk += r.ppk;
+            t.koszty += r.koszty;
+        }
+        return {
+            brutto: round2(t.brutto),
+            emerytalne: round2(t.emerytalne),
+            rentowe: round2(t.rentowe),
+            wypadkowa: round2(t.wypadkowa),
+            fp: round2(t.fp),
+            fgsp: round2(t.fgsp),
+            ppk: round2(t.ppk),
+            koszty: round2(t.koszty),
+        };
+    }, [monthlyEmployer]);
+
     const formatCurrency = (value: number) =>
         new Intl.NumberFormat("pl-PL", {
             style: "currency",
             currency: "PLN",
             minimumFractionDigits: 2,
+        }).format(value);
+
+    const fmt = (value: number) =>
+        new Intl.NumberFormat("pl-PL", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
         }).format(value);
 
     return (
@@ -754,19 +1072,18 @@ export default function KalkulatorWynagrodzenPage() {
                 </div>
             </section>
 
-            {/* Podsumowanie - główne wyniki */}
+            {/* Szczegółowa tabela miesięczna */}
             <section className="py-12 bg-linear-to-br from-blue-50 via-white to-violet-50">
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="max-w-4xl mx-auto">
+                    <div className="max-w-6xl mx-auto">
                         <h2 className="text-2xl font-bold text-center text-gray-900 mb-8">
-                            Podsumowanie obliczeń
+                            Podsumowanie roczne
                         </h2>
-                        <div className="grid sm:grid-cols-3 gap-6">
-                            <Card className="p-8 rounded-2xl bg-linear-to-br from-blue-50 to-blue-100/50 border-blue-200 hover:shadow-lg transition-shadow">
-                                <div className="text-center space-y-3">
-                                    <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center mx-auto">
-                                        <Banknote className="w-6 h-6 text-white" />
-                                    </div>
+
+                        {/* 3 karty podsumowania */}
+                        <div className="grid sm:grid-cols-3 gap-6 mb-8">
+                            <Card className="p-6 rounded-2xl bg-linear-to-br from-blue-50 to-blue-100/50 border-blue-200">
+                                <div className="text-center space-y-2">
                                     <div className="text-sm font-medium text-blue-700 uppercase tracking-wide">
                                         Brutto
                                     </div>
@@ -774,16 +1091,12 @@ export default function KalkulatorWynagrodzenPage() {
                                         {formatCurrency(result.brutto)}
                                     </div>
                                     <div className="text-xs text-blue-600">
-                                        Wynagrodzenie w umowie
+                                        miesięcznie
                                     </div>
                                 </div>
                             </Card>
-
-                            <Card className="p-8 rounded-2xl bg-linear-to-br from-emerald-50 to-emerald-100/50 border-emerald-200 hover:shadow-lg transition-shadow ring-2 ring-emerald-300">
-                                <div className="text-center space-y-3">
-                                    <div className="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center mx-auto">
-                                        <TrendingUp className="w-6 h-6 text-white" />
-                                    </div>
+                            <Card className="p-6 rounded-2xl bg-linear-to-br from-emerald-50 to-emerald-100/50 border-emerald-200 ring-2 ring-emerald-300">
+                                <div className="text-center space-y-2">
                                     <div className="text-sm font-medium text-emerald-700 uppercase tracking-wide">
                                         Netto
                                     </div>
@@ -791,16 +1104,12 @@ export default function KalkulatorWynagrodzenPage() {
                                         {formatCurrency(result.netto)}
                                     </div>
                                     <div className="text-xs text-emerald-600">
-                                        Do wypłaty na konto
+                                        do wypłaty
                                     </div>
                                 </div>
                             </Card>
-
-                            <Card className="p-8 rounded-2xl bg-linear-to-br from-violet-50 to-violet-100/50 border-violet-200 hover:shadow-lg transition-shadow">
-                                <div className="text-center space-y-3">
-                                    <div className="w-12 h-12 bg-violet-500 rounded-full flex items-center justify-center mx-auto">
-                                        <Building className="w-6 h-6 text-white" />
-                                    </div>
+                            <Card className="p-6 rounded-2xl bg-linear-to-br from-violet-50 to-violet-100/50 border-violet-200">
+                                <div className="text-center space-y-2">
                                     <div className="text-sm font-medium text-violet-700 uppercase tracking-wide">
                                         Koszt pracodawcy
                                     </div>
@@ -810,53 +1119,290 @@ export default function KalkulatorWynagrodzenPage() {
                                         )}
                                     </div>
                                     <div className="text-xs text-violet-600">
-                                        Całkowity koszt zatrudnienia
+                                        miesięcznie
                                     </div>
                                 </div>
                             </Card>
                         </div>
 
-                        {/* Dodatkowe statystyki */}
-                        <div className="mt-8 grid sm:grid-cols-3 gap-4 text-center">
-                            <div>
-                                <div className="text-2xl font-bold text-red-600">
-                                    -
-                                    {formatCurrency(
-                                        result.brutto - result.netto,
+                        {/* Rozwijana tabela */}
+                        <Collapsible
+                            open={detailsOpen}
+                            onOpenChange={setDetailsOpen}
+                        >
+                            <CollapsibleTrigger asChild>
+                                <button className="w-full flex items-center justify-center gap-2 py-3 px-6 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm">
+                                    <span>
+                                        {detailsOpen
+                                            ? "Ukryj szczegóły"
+                                            : "Więcej szczegółów"}
+                                    </span>
+                                    <ChevronDown
+                                        className={`w-4 h-4 transition-transform duration-200 ${detailsOpen ? "rotate-180" : ""}`}
+                                    />
+                                </button>
+                            </CollapsibleTrigger>
+
+                            <CollapsibleContent className="mt-6">
+                                {/* Przełącznik Pracownik / Pracodawca */}
+                                <div className="flex items-center justify-center gap-2 p-1 bg-gray-100 rounded-lg mb-6 max-w-xs mx-auto">
+                                    <button
+                                        onClick={() => setDetailTab("employee")}
+                                        className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                            detailTab === "employee"
+                                                ? "bg-white text-blue-600 shadow-sm"
+                                                : "text-gray-600 hover:text-gray-900"
+                                        }`}
+                                    >
+                                        Pracownik
+                                    </button>
+                                    <button
+                                        onClick={() => setDetailTab("employer")}
+                                        className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                            detailTab === "employer"
+                                                ? "bg-white text-violet-600 shadow-sm"
+                                                : "text-gray-600 hover:text-gray-900"
+                                        }`}
+                                    >
+                                        Pracodawca
+                                    </button>
+                                </div>
+
+                                <Card className="rounded-xl overflow-hidden">
+                                    {detailTab === "employee" ? (
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow className="bg-gray-50">
+                                                    <TableHead className="font-semibold text-gray-700">
+                                                        Miesiąc
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        Brutto
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        Emerytalna
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        Rentowa
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        Chorobowa
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        Zdrowotna
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        Zaliczka
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        PPK
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-emerald-700">
+                                                        Netto
+                                                    </TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {monthlyEmployee.map((row) => (
+                                                    <TableRow key={row.month}>
+                                                        <TableCell className="font-medium text-gray-900">
+                                                            {row.month}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-gray-700">
+                                                            {fmt(row.brutto)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-red-600">
+                                                            {fmt(
+                                                                row.emerytalne,
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-red-600">
+                                                            {fmt(row.rentowe)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-red-600">
+                                                            {fmt(row.chorobowe)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-red-600">
+                                                            {fmt(row.zdrowotne)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-red-600">
+                                                            {fmt(row.zaliczka)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-red-600">
+                                                            {fmt(row.ppk)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-semibold text-emerald-600">
+                                                            {fmt(row.netto)}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                            <TableFooter>
+                                                <TableRow className="bg-gray-100 font-semibold">
+                                                    <TableCell className="font-bold text-gray-900">
+                                                        SUMA
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-bold text-gray-900">
+                                                        {fmt(
+                                                            employeeTotals.brutto,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-red-700">
+                                                        {fmt(
+                                                            employeeTotals.emerytalne,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-red-700">
+                                                        {fmt(
+                                                            employeeTotals.rentowe,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-red-700">
+                                                        {fmt(
+                                                            employeeTotals.chorobowe,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-red-700">
+                                                        {fmt(
+                                                            employeeTotals.zdrowotne,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-red-700">
+                                                        {fmt(
+                                                            employeeTotals.zaliczka,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-red-700">
+                                                        {fmt(
+                                                            employeeTotals.ppk,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-bold text-emerald-700">
+                                                        {fmt(
+                                                            employeeTotals.netto,
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            </TableFooter>
+                                        </Table>
+                                    ) : (
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow className="bg-gray-50">
+                                                    <TableHead className="font-semibold text-gray-700">
+                                                        Miesiąc
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        Brutto
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        Emerytalna
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        Rentowa
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        Wypadkowa
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        FP
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        FGŚP
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-gray-700">
+                                                        PPK
+                                                    </TableHead>
+                                                    <TableHead className="text-right font-semibold text-violet-700">
+                                                        Koszty
+                                                    </TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {monthlyEmployer.map((row) => (
+                                                    <TableRow key={row.month}>
+                                                        <TableCell className="font-medium text-gray-900">
+                                                            {row.month}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-gray-700">
+                                                            {fmt(row.brutto)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-red-600">
+                                                            {fmt(
+                                                                row.emerytalne,
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-red-600">
+                                                            {fmt(row.rentowe)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-red-600">
+                                                            {fmt(row.wypadkowa)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-red-600">
+                                                            {fmt(row.fp)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-red-600">
+                                                            {fmt(row.fgsp)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-red-600">
+                                                            {fmt(row.ppk)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-semibold text-violet-600">
+                                                            {fmt(row.koszty)}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                            <TableFooter>
+                                                <TableRow className="bg-gray-100 font-semibold">
+                                                    <TableCell className="font-bold text-gray-900">
+                                                        SUMA
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-bold text-gray-900">
+                                                        {fmt(
+                                                            employerTotals.brutto,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-red-700">
+                                                        {fmt(
+                                                            employerTotals.emerytalne,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-red-700">
+                                                        {fmt(
+                                                            employerTotals.rentowe,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-red-700">
+                                                        {fmt(
+                                                            employerTotals.wypadkowa,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-red-700">
+                                                        {fmt(employerTotals.fp)}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-red-700">
+                                                        {fmt(
+                                                            employerTotals.fgsp,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-red-700">
+                                                        {fmt(
+                                                            employerTotals.ppk,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-bold text-violet-700">
+                                                        {fmt(
+                                                            employerTotals.koszty,
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            </TableFooter>
+                                        </Table>
                                     )}
-                                </div>
-                                <div className="text-xs text-gray-600 mt-1">
-                                    Składki i podatki łącznie
-                                </div>
-                            </div>
-                            <div>
-                                <div className="text-2xl font-bold text-blue-600">
-                                    {(
-                                        (result.netto / result.brutto) *
-                                        100
-                                    ).toFixed(1)}
-                                    %
-                                </div>
-                                <div className="text-xs text-gray-600 mt-1">
-                                    Stosunek netto do brutto
-                                </div>
-                            </div>
-                            <div>
-                                <div className="text-2xl font-bold text-violet-600">
-                                    +
-                                    {(
-                                        (result.pracodawcaKoszty /
-                                            result.brutto -
-                                            1) *
-                                        100
-                                    ).toFixed(1)}
-                                    %
-                                </div>
-                                <div className="text-xs text-gray-600 mt-1">
-                                    Dodatkowy koszt pracodawcy
-                                </div>
-                            </div>
-                        </div>
+                                </Card>
+                            </CollapsibleContent>
+                        </Collapsible>
                     </div>
                 </div>
             </section>
